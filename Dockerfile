@@ -18,7 +18,7 @@ WORKDIR /app
 COPY . /app
 
 # Install PHP dependencies
-RUN APP_ENV=$APP_ENV composer install $([ "$APP_ENV" = "prod" ] && echo "--no-dev --optimize-autoloader") --no-interaction
+RUN APP_ENV=$APP_ENV composer install $([ "$APP_ENV" = "prod" ] && echo "--no-dev --optimize-autoloader --classmap-authoritative") --no-interaction
 
 # Build assets for prod
 RUN if [ "$APP_ENV" = "prod" ]; then \
@@ -36,18 +36,12 @@ ARG APP_ENV
 ENV APP_ENV=${APP_ENV}
 ENV SERVER_NAME=:80
 
-# Copy PHP
+# Copy PHP and shared libraries
 COPY --from=builder /usr/local/bin/frankenphp /usr/local/bin/frankenphp
 COPY --from=builder /usr/local/bin/php /usr/local/bin/php
-
-# Copy shared libraries to /usr/lib (where linker looks by default)
 COPY --from=builder /usr/local/lib/*.so* /usr/lib/
-
-# Copy PHP extensions (must stay in /usr/local/lib/php for PHP to find them)
 COPY --from=builder /usr/local/lib/php /usr/local/lib/php
 COPY --from=builder /usr/local/etc/php /usr/local/etc/php
-
-# Copy all shared libraries (usrmerge: /lib is symlinked to /usr/lib in Debian 13)
 COPY --from=builder /usr/lib/ /usr/lib/
 
 # Copy application
