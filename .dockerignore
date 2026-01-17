@@ -27,6 +27,7 @@ LICENSE
 # Data
 /data
 /var
+/share
 
 # Dependencies
 /vendor

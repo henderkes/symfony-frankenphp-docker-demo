@@ -1,0 +1,82 @@
+x-env: &env
+  APP_SECRET: ${APP_SECRET}
+  DATABASE_URL: postgresql://${POSTGRES_USER:-app}:${POSTGRES_PASSWORD:-!ChangeMe!}@pgsql:5432/${POSTGRES_DB:-app}?serverVersion=18&charset=utf8
+  MAILER_DSN: ${MAILER_DSN}
+  DEFAULT_URI: ${DEFAULT_URI:-http://localhost}
+  PROM_METRICS_DSN: ${PROM_METRICS_DSN:-apcu}
+  MERCURE_URL: ${MERCURE_URL:-http://localhost/.well-known/mercure}
+  MERCURE_PUBLIC_URL: ${MERCURE_PUBLIC_URL:-http://localhost/.well-known/mercure}
+  MERCURE_PUBLISHER_JWT_KEY: ${MERCURE_PUBLISHER_JWT_KEY:-!ChangeThisMercureHubJWTSecretKey!}
+  MERCURE_SUBSCRIBER_JWT_KEY: ${MERCURE_SUBSCRIBER_JWT_KEY:-!ChangeThisMercureHubJWTSecretKey!}
+
+x-frankenphp: &frankenphp
+  ports:
+    - "80:80"
+    - "443:443"
+    - "443:443/udp"
+    - "2019:2019"
+  tmpfs:
+    - /home/nonroot/.local/share/caddy:uid=65532,gid=65532
+  depends_on:
+    pgsql:
+      condition: service_healthy
+  networks:
+    - symfony-demo
+
+services:
+  dev:
+    <<: *frankenphp
+    container_name: symfony-demo-dev
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+      args:
+        APP_ENV: dev
+    environment:
+      <<: *env
+      APP_ENV: dev
+      FRANKENPHP_WATCH: watch
+    volumes:
+      - ./:/app
+      - /app/var
+
+  prod:
+    <<: *frankenphp
+    container_name: symfony-demo-prod
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+      args:
+        APP_ENV: prod
+    environment:
+      <<: *env
+      APP_ENV: prod
+    tmpfs:
+      - /home/nonroot/.local/share/caddy:uid=65532,gid=65532
+      - /app/var:uid=65532,gid=65532
+
+  pgsql:
+    image: postgres:18-alpine
+    container_name: symfony-demo-pgsql
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-app}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-!ChangeMe!}
+      POSTGRES_DB: ${POSTGRES_DB:-app}
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./share/pgsql_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-app}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - symfony-demo
+
+networks:
+  symfony-demo:
+    driver: bridge

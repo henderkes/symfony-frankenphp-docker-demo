@@ -26,3 +26,4 @@ phpstan.neon
 
 .idea
 .ddev
+/share/
