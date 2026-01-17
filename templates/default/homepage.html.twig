@@ -17,6 +17,18 @@
         {{ render_language_selector(true) }}
     </div>
 
+    <div>
+        Client IP: {{ app.request.getClientIp() }}<br>
+        Remote Addr: {{ app.request.server.get('REMOTE_ADDR') }}<br>
+        New Route: {{ url('blog_index', {}, ) }}<br>
+        Worker Mode: {{ app.request.server.get('FRANKENPHP_WORKER') }}<br>
+        {% for key, value in app.request.server %}
+            {% if key starts with 'HTTP_X' %}
+                {{ key }}: {{ value }}<br>
+            {% endif %}
+        {% endfor %}
+    </div>
+
     <div class="row">
         <div class="col-sm">
             <div class="bg-body-tertiary px-3 py-5 rounded-3">

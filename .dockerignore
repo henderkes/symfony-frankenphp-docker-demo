@@ -1,0 +1,42 @@
+# Git files
+.git
+.gitignore
+.gitattributes
+
+# Docker files
+docker-compose*.yaml
+Dockerfile
+.dockerignore
+
+# Environment files
+.env.local
+.env.*.local
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+*~
+
+# Development
+.ddev
+*.md
+LICENSE
+
+# Data
+/data
+/var
+
+# Dependencies
+/vendor
+
+# Build artifacts
+/public/bundles
+
+# Tests
+/tests
+/phpunit.xml.dist
+
+# CI/CD
+.github

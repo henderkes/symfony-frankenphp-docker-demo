@@ -1,6 +1,7 @@
 # see https://symfony.com/doc/current/reference/configuration/framework.html
 framework:
     secret: '%env(APP_SECRET)%'
+    trusted_proxies: 'private_ranges'
 
     # this defines the codes of the locales (languages) available in the application
     # https://symfony.com/doc/current/reference/configuration/framework.html#enabled-locales
