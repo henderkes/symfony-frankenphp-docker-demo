@@ -14,12 +14,15 @@ x-frankenphp: &frankenphp
     - "80:80"
     - "443:443"
     - "443:443/udp"
-    - "2019:2019"
   tmpfs:
     - /home/nonroot/.local/share/caddy:uid=65532,gid=65532
   depends_on:
     pgsql:
       condition: service_healthy
+    prometheus:
+      condition: service_started
+    grafana:
+      condition: service_started
   networks:
     - symfony-demo
 
@@ -57,6 +60,33 @@ services:
       - /home/nonroot/.local/share/caddy:uid=65532,gid=65532
       - /app/var:uid=65532,gid=65532
 
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: symfony-demo-prometheus
+    volumes:
+      - ./prometheus.yaml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+    networks:
+      - symfony-demo
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: symfony-demo-grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_SERVER_ROOT_URL: http://localhost/grafana/
+      GF_SERVER_SERVE_FROM_SUB_PATH: "true"
+    volumes:
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - prometheus
+    networks:
+      - symfony-demo
+
   pgsql:
     image: postgres:18-alpine
     container_name: symfony-demo-pgsql
@@ -76,6 +106,10 @@ services:
       start_period: 10s
     networks:
       - symfony-demo
+
+volumes:
+  prometheus_data:
+  grafana_data:
 
 networks:
   symfony-demo:
