@@ -2,18 +2,14 @@ x-env: &env
   APP_SECRET: ${APP_SECRET}
   DATABASE_URL: postgresql://${POSTGRES_USER:-app}:${POSTGRES_PASSWORD:-!ChangeMe!}@pgsql:5432/${POSTGRES_DB:-app}?serverVersion=18&charset=utf8
   MAILER_DSN: ${MAILER_DSN}
-  DEFAULT_URI: ${DEFAULT_URI:-http://localhost}
+  DEFAULT_URI: ${DEFAULT_URI:-https://symfony-demo.localhost}
   PROM_METRICS_DSN: ${PROM_METRICS_DSN:-apcu}
   MERCURE_URL: ${MERCURE_URL:-http://localhost/.well-known/mercure}
-  MERCURE_PUBLIC_URL: ${MERCURE_PUBLIC_URL:-http://localhost/.well-known/mercure}
+  MERCURE_PUBLIC_URL: ${MERCURE_PUBLIC_URL:-https://symfony-demo.localhost/.well-known/mercure}
   MERCURE_PUBLISHER_JWT_KEY: ${MERCURE_PUBLISHER_JWT_KEY:-!ChangeThisMercureHubJWTSecretKey!}
   MERCURE_SUBSCRIBER_JWT_KEY: ${MERCURE_SUBSCRIBER_JWT_KEY:-!ChangeThisMercureHubJWTSecretKey!}
 
 x-frankenphp: &frankenphp
-  ports:
-    - "80:80"
-    - "443:443"
-    - "443:443/udp"
   tmpfs:
     - /home/nonroot/.local/share/caddy:uid=65532,gid=65532
   depends_on:
@@ -25,6 +21,7 @@ x-frankenphp: &frankenphp
       condition: service_started
   networks:
     - symfony-demo
+    - traefik
 
 services:
   dev:
@@ -40,9 +37,16 @@ services:
       <<: *env
       APP_ENV: dev
       FRANKENPHP_WATCH: watch
+      SERVER_NAME: ":80"
     volumes:
       - ./:/app
       - /app/var
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.symfony-demo-dev.rule=Host(`symfony-demo.localhost`)"
+      - "traefik.http.routers.symfony-demo-dev.entrypoints=websecure"
+      - "traefik.http.routers.symfony-demo-dev.tls=true"
+      - "traefik.http.services.symfony-demo-dev.loadbalancer.server.port=80"
 
   prod:
     <<: *frankenphp
@@ -56,9 +60,16 @@ services:
     environment:
       <<: *env
       APP_ENV: prod
+      SERVER_NAME: ":80"
     tmpfs:
       - /home/nonroot/.local/share/caddy:uid=65532,gid=65532
       - /app/var:uid=65532,gid=65532
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.symfony-demo-prod.rule=Host(`symfony-demo.localhost`)"
+      - "traefik.http.routers.symfony-demo-prod.entrypoints=websecure"
+      - "traefik.http.routers.symfony-demo-prod.tls=true"
+      - "traefik.http.services.symfony-demo-prod.loadbalancer.server.port=80"
 
   prometheus:
     image: prom/prometheus:latest
@@ -78,7 +89,7 @@ services:
     environment:
       GF_SECURITY_ADMIN_USER: admin
       GF_SECURITY_ADMIN_PASSWORD: admin
-      GF_SERVER_ROOT_URL: http://localhost/grafana/
+      GF_SERVER_ROOT_URL: https://symfony-demo.localhost/grafana/
       GF_SERVER_SERVE_FROM_SUB_PATH: "true"
     volumes:
       - grafana_data:/var/lib/grafana
@@ -114,3 +125,5 @@ volumes:
 networks:
   symfony-demo:
     driver: bridge
+  traefik:
+    external: true
