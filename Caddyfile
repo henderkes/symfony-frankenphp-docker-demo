@@ -1,9 +1,5 @@
 {
-    admin :2019
     metrics
-    frankenphp {
-        num_threads 8
-    }
 }
 
 {$SERVER_NAME:http://} {
@@ -30,7 +26,7 @@
             root ./public
             worker {
                 file index.php
-                num 4
+                num 1
                 {$FRANKENPHP_WATCH:}
             }
         }

@@ -87,10 +87,7 @@
     "autoload": {
         "psr-4": {
             "App\\": "src/"
-        },
-        "exclude-from-classmap": [
-            "src/DataFixtures/"
-        ]
+        }
     },
     "autoload-dev": {
         "psr-4": {
@@ -100,7 +97,6 @@
     },
     "scripts": {
         "auto-scripts": {
-            "-r \"@rename('.env.local.demo', '.env.local');\"": "php-script",
             "cache:clear": "symfony-cmd",
             "assets:install %PUBLIC_DIR%": "symfony-cmd",
             "importmap:install": "symfony-cmd",
