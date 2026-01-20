@@ -5,7 +5,7 @@ ARG APP_ENV=dev
 ENV APP_ENV=${APP_ENV}
 ENV SERVER_NAME=:80
 
-RUN apt update && apt install -y git unzip
+RUN apt update && apt-get install -y git unzip
 
 # Install PHP extensions
 RUN install-php-extensions pdo_pgsql intl apcu
