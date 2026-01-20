@@ -30,7 +30,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-      target: runtime
       args:
         APP_ENV: dev
     environment:
@@ -54,7 +53,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-      target: runtime
       args:
         APP_ENV: prod
     environment:
