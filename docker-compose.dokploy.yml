@@ -1,9 +1,5 @@
 services:
   frankenphp:
-    deploy:
-      placement:
-        constraints:
-          - "node.role == worker"
     build:
       context: .
       dockerfile: Dockerfile
@@ -20,8 +16,11 @@ services:
       - /home/nonroot/.local/share/caddy:uid=65532,gid=65532
       - /app/var:uid=65532,gid=65532
     depends_on:
-      pgsql:
-        condition: service_healthy
+      - pgsql
+    deploy:
+      placement:
+        constraints:
+          - "node.role == worker"
     networks:
       - default
 
@@ -34,11 +33,15 @@ services:
     volumes:
       - pgsql_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-app}"]
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-app}" ]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 10s
+    deploy:
+      placement:
+        constraints:
+          - "node.role == worker"
     networks:
       - default
 
