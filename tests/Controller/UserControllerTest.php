@@ -102,7 +102,7 @@ final class UserControllerTest extends WebTestCase
 
         $this->assertResponseRedirects();
         $this->assertResponseRedirects(
-            '/',
+            '/en/',
             Response::HTTP_FOUND,
             'Changing password logout the user.'
         );

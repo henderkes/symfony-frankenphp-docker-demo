@@ -1,5 +1,9 @@
 services:
   frankenphp:
+    deploy:
+      placement:
+        constraints:
+          - "node.role == worker"
     build:
       context: .
       dockerfile: Dockerfile

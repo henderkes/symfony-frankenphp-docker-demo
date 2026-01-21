@@ -11,6 +11,13 @@
 # the route (FrameworkBundle:Template:template) is a convenient shortcut when
 # the template can be rendered without executing any logic in your own controller.
 # See https://symfony.com/doc/current/templates.html#rendering-a-template-directly-from-a-route
+root:
+    path: /
+    controller: Symfony\Bundle\FrameworkBundle\Controller\RedirectController::redirectAction
+    defaults:
+        route: homepage
+        permanent: true
+
 controllers:
     resource: routing.controllers
     prefix: /{_locale}

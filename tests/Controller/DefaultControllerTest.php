@@ -88,7 +88,7 @@ final class DefaultControllerTest extends WebTestCase
 
     public static function getPublicUrls(): \Generator
     {
-        yield ['/'];
+        yield ['/en/'];
         yield ['/en/blog/'];
         yield ['/en/login'];
     }
