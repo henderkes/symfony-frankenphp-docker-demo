@@ -1,0 +1,45 @@
+services:
+    frankenphp:
+        image: symfony-demo-frankenphpbuild-yymrow:latest
+        environment:
+            APP_ENV: prod
+            APP_SECRET: ${APP_SECRET}
+            DATABASE_URL: postgresql://${POSTGRES_USER:-app}:${POSTGRES_PASSWORD:-!ChangeMe!}@pgsql:5432/${POSTGRES_DB:-app}?serverVersion=18&charset=utf8
+            MAILER_DSN: ${MAILER_DSN}
+            DEFAULT_URI: ${DEFAULT_URI}
+            SERVER_NAME: ":80"
+        tmpfs:
+            - /home/nonroot/.local/share/caddy:uid=65532,gid=65532
+            - /app/var:uid=65532,gid=65532
+        depends_on:
+            - pgsql
+        deploy:
+            placement:
+                constraints:
+                    - "node.role == worker"
+        networks:
+            - default
+
+    pgsql:
+        image: postgres:18-alpine
+        environment:
+            POSTGRES_USER: ${POSTGRES_USER:-app}
+            POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-!ChangeMe!}
+            POSTGRES_DB: ${POSTGRES_DB:-app}
+        volumes:
+            - pgsql_data:/var/lib/postgresql/data
+        healthcheck:
+            test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-app}" ]
+            interval: 10s
+            timeout: 5s
+            retries: 5
+            start_period: 10s
+        deploy:
+            placement:
+                constraints:
+                    - "node.role == worker"
+        networks:
+            - default
+
+volumes:
+    pgsql_data:
