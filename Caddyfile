@@ -3,7 +3,7 @@
 }
 
 :2020 {
-    @allowed remote_ip private_ranges
+    @allowed remote_ip private_ranges 10.0.1.0/24
 
     reverse_proxy @allowed localhost:2019 {
         header_up Host localhost
