@@ -2,6 +2,15 @@
     metrics
 }
 
+:2020 {
+    @allowed remote_ip private_ranges
+
+    reverse_proxy @allowed localhost:2019 {
+        header_up Host localhost
+    }
+    respond 403
+}
+
 {$SERVER_NAME:http://} {
     root ./public
     log
