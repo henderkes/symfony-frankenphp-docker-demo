@@ -3,12 +3,9 @@
 }
 
 :2020 {
-    @allowed remote_ip private_ranges 10.0.1.0/24
-
-    reverse_proxy @allowed localhost:2019 {
+    reverse_proxy localhost:2019 {
         header_up Host localhost
     }
-    respond 403
 }
 
 {$SERVER_NAME:http://} {
