@@ -28,7 +28,7 @@
         "symfony/http-client": "^8",
         "symfony/intl": "^8",
         "symfony/mailer": "^8",
-        "symfony/monolog-bundle": "^3.7",
+        "symfony/monolog-bundle": "^v4.0.1",
         "symfony/polyfill-intl-messageformatter": "^1.12",
         "symfony/runtime": "^8",
         "symfony/security-bundle": "^8",
@@ -69,7 +69,9 @@
         "symfony/polyfill-php74": "*",
         "symfony/polyfill-php80": "*",
         "symfony/polyfill-php81": "*",
-        "symfony/polyfill-php82": "*"
+        "symfony/polyfill-php82": "*",
+        "symfony/polyfill-php83": "*",
+        "symfony/polyfill-php84": "*"
     },
     "config": {
         "allow-plugins": {
@@ -112,7 +114,7 @@
     "extra": {
         "symfony": {
             "allow-contrib": true,
-            "require": "7.4.*"
+            "require": "8.0.*"
         }
     }
 }
