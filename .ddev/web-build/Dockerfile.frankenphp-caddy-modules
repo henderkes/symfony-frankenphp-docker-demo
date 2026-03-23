@@ -1,0 +1,20 @@
+COPY --from=caddy-xcaddy /usr/bin/xcaddy /usr/bin/xcaddy
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends golang gcc libc6-dev libbrotli-dev php-zts-devel && rm -rf /var/lib/apt/lists/*
+
+RUN ln -sf /usr/lib/libphp-zts-84.so /usr/lib/libphp.so
+
+RUN CGO_ENABLED=1 \
+    XCADDY_SETCAP=1 \
+    XCADDY_GO_BUILD_FLAGS="-ldflags='-w -s' -tags=nobadger,nomysql,nopgx,nowatcher" \
+    CGO_CFLAGS=$(php-config-zts --includes) \
+    CGO_LDFLAGS="$(php-config-zts --ldflags) $(php-config-zts --libs)" \
+    xcaddy build \
+        --output /usr/local/bin/frankenphp \
+        --with github.com/dunglas/frankenphp \
+        --with github.com/dunglas/frankenphp/caddy \
+        --with github.com/dunglas/caddy-cbrotli \
+        --with github.com/dunglas/mercure/caddy \
+        --with github.com/dunglas/vulcain/caddy \
+        --with github.com/hairyhenderson/caddy-teapot-module

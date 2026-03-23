@@ -1,0 +1,6 @@
+#ddev-generated
+services:
+  web:
+    ports:
+      - "$DDEV_HOST_HTTP_PORT:80"
+      - "$DDEV_HOST_HTTPS_PORT:443"

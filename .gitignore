@@ -25,7 +25,6 @@ phpstan.neon
 ###< phpunit/phpunit ###
 
 .idea
-.ddev
 /share/
 
 ###> friendsofphp/php-cs-fixer ###
