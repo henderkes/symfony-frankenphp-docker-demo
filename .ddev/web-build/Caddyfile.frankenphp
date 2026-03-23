@@ -31,7 +31,7 @@
 :80 {
 	import common_config
 
-    @teapor path /teapot
+    @teapot path /teapot
     teapot @teapot
 
 	@secure header X-Forwarded-Proto https
@@ -51,7 +51,7 @@
 	import common_config
 	tls /etc/ssl/certs/master.crt /etc/ssl/certs/master.key
 
-    @teapor path /teapot
+    @teapot path /teapot
     teapot @teapot
 
 	php_server {
