@@ -1,0 +1,12 @@
+name: frankenphp
+repository: ddev/ddev-frankenphp
+version: v1.1.4
+install_date: "2026-03-23T14:45:10+07:00"
+project_files:
+    - config.frankenphp.yaml
+    - docker-compose.frankenphp.yaml
+    - web-build/Caddyfile.frankenphp
+    - web-build/Dockerfile.frankenphp
+    - web-build/pre.Dockerfile.frankenphp
+global_files: []
+removal_actions: []
