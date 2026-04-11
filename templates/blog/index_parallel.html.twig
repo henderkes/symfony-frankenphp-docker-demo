@@ -1,0 +1,105 @@
+{% extends 'base.html.twig' %}
+
+{% block body_id 'blog_index' %}
+
+{% block main %}
+    <div class="mb-3">
+        <a href="{{ path('blog_index') }}" class="btn btn-sm btn-outline-primary">Back to blog</a>
+        <a href="{{ path('blog_all') }}" class="btn btn-sm btn-outline-primary">Fork (single)</a>
+        <a href="{{ path('blog_all_fork', {num: 9}) }}" class="btn btn-sm btn-outline-primary">Fork/9</a>
+        <a href="{{ path('blog_ext_parallel') }}" class="btn btn-sm btn-outline-secondary">ext-parallel (single)</a>
+        <a href="{{ path('blog_ext_parallel_num', {num: 9}) }}" class="btn btn-sm btn-outline-secondary">ext-parallel/9</a>
+    </div>
+
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <nav>
+            <ul class="pagination justify-content-center mb-0" id="pagination">
+            </ul>
+        </nav>
+        <small class="text-muted text-nowrap ms-3">
+            {{ numResults }} posts &middot; {{ totalPages }} pages &middot; {{ elapsed_ms }} ms ({{ mode }})
+        </small>
+    </div>
+
+    {% for page, html in pages %}
+        <div class="page-content" id="page-{{ page }}" style="{{ page != currentPage ? 'display: none;' }}">
+            {{ html|raw }}
+        </div>
+    {% endfor %}
+
+    <script>
+        (function() {
+            var totalPages = {{ totalPages }};
+            var currentPage = {{ currentPage }};
+            var pagination = document.getElementById('pagination');
+            var maxVisible = 7;
+
+            function goToPage(page) {
+                document.querySelectorAll('.page-content').forEach(function(el) {
+                    el.style.display = 'none';
+                });
+                var target = document.getElementById('page-' + page);
+                if (target) target.style.display = 'block';
+                currentPage = page;
+                renderPagination();
+                window.scrollTo({top: 0, behavior: 'smooth'});
+            }
+
+            function renderPagination() {
+                var html = '';
+
+                // Previous
+                html += '<li class="page-item ' + (currentPage <= 1 ? 'disabled' : '') + '">';
+                html += '<a class="page-link" href="#" data-page="' + (currentPage - 1) + '">&laquo;</a></li>';
+
+                // First page
+                html += pageItem(1);
+
+                if (totalPages <= maxVisible + 2) {
+                    for (var i = 2; i < totalPages; i++) html += pageItem(i);
+                } else {
+                    var start = Math.max(2, currentPage - Math.floor(maxVisible / 2));
+                    var end = Math.min(totalPages - 1, start + maxVisible - 1);
+                    start = Math.max(2, end - maxVisible + 1);
+
+                    if (start > 2) html += '<li class="page-item disabled"><span class="page-link">&hellip;</span></li>';
+                    for (var i = start; i <= end; i++) html += pageItem(i);
+                    if (end < totalPages - 1) html += '<li class="page-item disabled"><span class="page-link">&hellip;</span></li>';
+                }
+
+                // Last page
+                if (totalPages > 1) html += pageItem(totalPages);
+
+                // Next
+                html += '<li class="page-item ' + (currentPage >= totalPages ? 'disabled' : '') + '">';
+                html += '<a class="page-link" href="#" data-page="' + (currentPage + 1) + '">&raquo;</a></li>';
+
+                pagination.innerHTML = html;
+
+                pagination.querySelectorAll('a.page-link').forEach(function(a) {
+                    a.addEventListener('click', function(e) {
+                        e.preventDefault();
+                        var p = parseInt(this.getAttribute('data-page'));
+                        if (p >= 1 && p <= totalPages) goToPage(p);
+                    });
+                });
+            }
+
+            function pageItem(i) {
+                if (i === currentPage) {
+                    return '<li class="page-item active"><span class="page-link">' + i + '</span></li>';
+                }
+                return '<li class="page-item"><a class="page-link" href="#" data-page="' + i + '">' + i + '</a></li>';
+            }
+
+            renderPagination();
+        })();
+    </script>
+{% endblock %}
+
+{% block sidebar %}
+    {{ parent() }}
+
+    {{ show_source_code(_self) }}
+    {{ include('blog/_rss.html.twig') }}
+{% endblock %}

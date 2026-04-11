@@ -13,11 +13,14 @@ namespace App\Controller;
 
 use App\Entity\Comment;
 use App\Entity\Post;
+use App\Entity\Tag;
 use App\Entity\User;
 use App\Event\CommentCreatedEvent;
 use App\Form\CommentType;
+use App\Pagination\Paginator;
 use App\Repository\PostRepository;
 use App\Repository\TagRepository;
+use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bridge\Doctrine\Attribute\MapEntity;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -29,6 +32,8 @@ use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\Routing\Requirement\Requirement;
 use Symfony\Component\Security\Http\Attribute\CurrentUser;
 use Symfony\Component\Security\Http\Attribute\IsGranted;
+use Twig\Environment;
+use function Henderkes\ParallelFork\run;
 
 /**
  * Controller used to manage blog contents in the public part of the site.
@@ -59,13 +64,211 @@ final class BlogController extends AbstractController
 
         $latestPosts = $posts->findLatest($page, $tag);
 
-        // Every template name also has two extensions that specify the format and
-        // engine for that template.
-        // See https://symfony.com/doc/current/templates.html#template-naming
         return $this->render('blog/index.'.$_format.'.twig', [
             'paginator' => $latestPosts,
             'tagName' => $tag?->getName(),
         ]);
+    }
+
+    #[Route('/all', name: 'blog_all', defaults: ['num' => '0'], methods: ['GET'])]
+    #[Route('/all/{num}', name: 'blog_all_fork', requirements: ['num' => '\d+'], methods: ['GET'])]
+    #[Cache(smaxage: 10)]
+    public function all(Request $request, int $num, PostRepository $posts, TagRepository $tags, Environment $twig, EntityManagerInterface $em): Response
+    {
+        $start = microtime(true);
+
+        $tag = null;
+        $activeTag = $request->query->get('tag');
+
+        if ($activeTag) {
+            $tag = $tags->findOneBy(['name' => $activeTag]);
+        }
+
+        $firstPage = $posts->findLatest(1, $tag);
+        $totalPages = $firstPage->getLastPage();
+        $numResults = $firstPage->getNumResults();
+
+        $tagName = $tag?->getName();
+        $numWorkers = max(0, $num);
+        $pages = [];
+
+        // Split pages across main process + n workers (n forks total)
+        $allPages = range(1, $totalPages);
+        $chunks = array_chunk($allPages, (int) ceil($totalPages / ($numWorkers + 1)));
+
+        // Inline render closure — captures $em and $twig directly (not nested)
+        // so the library's connection scanner finds and reconnects them.
+        $renderChunk = function (array $pageNums, ?string $tagName, ?string $activeTag) use ($em, $twig): array {
+            $result = [];
+            foreach ($pageNums as $pageNum) {
+                $repo = $em->getRepository(Post::class);
+
+                $qb = $repo->createQueryBuilder('p')
+                    ->addSelect('a', 't')
+                    ->innerJoin('p.author', 'a')
+                    ->leftJoin('p.tags', 't')
+                    ->where('p.publishedAt <= :now')
+                    ->orderBy('p.publishedAt', 'DESC')
+                    ->setParameter('now', new DateTimeImmutable());
+
+                if ($tagName) {
+                    $tagEntity = $em->getRepository(Tag::class)->findOneBy(['name' => $tagName]);
+                    if ($tagEntity) {
+                        $qb->andWhere(':tag MEMBER OF p.tags')->setParameter('tag', $tagEntity);
+                    }
+                }
+
+                $paginator = (new Paginator($qb))->paginate($pageNum);
+
+                $result[$pageNum] = $twig->render('blog/_posts_list.html.twig', [
+                    'posts' => iterator_to_array($paginator->getResults()),
+                    'activeTag' => $activeTag,
+                ]);
+            }
+            return $result;
+        };
+
+        // Fork n workers, each renders its chunk sequentially
+        $futures = [];
+        for ($i = 1; $i <= $numWorkers && $i < count($chunks); $i++) {
+            $futures[] = run($renderChunk, [$chunks[$i], $tagName, $activeTag]);
+        }
+
+        // Main process renders its chunk
+        $pages = $renderChunk($chunks[0], $tagName, $activeTag);
+
+        // Collect forked results
+        foreach ($futures as $future) {
+            foreach ($future->value() as $p => $html) {
+                $pages[$p] = $html;
+            }
+        }
+
+        ksort($pages);
+        $elapsedMs = round((microtime(true) - $start) * 1000, 1);
+
+        return $this->render('blog/index_parallel.html.twig', [
+            'pages' => $pages,
+            'currentPage' => 1,
+            'totalPages' => $totalPages,
+            'numResults' => $numResults,
+            'elapsed_ms' => $elapsedMs,
+            'mode' => $numWorkers > 0 ? "parallel ($numWorkers threads)" : 'single',
+            'tagName' => $activeTag,
+        ]);
+    }
+
+    #[Route('/parallel', name: 'blog_ext_parallel', defaults: ['num' => '0'], methods: ['GET'])]
+    #[Route('/parallel/{num}', name: 'blog_ext_parallel_num', requirements: ['num' => '\d+'], methods: ['GET'])]
+    #[Cache(smaxage: 10)]
+    public function extParallel(Request $request, int $num, PostRepository $posts, TagRepository $tags, Environment $twig, EntityManagerInterface $em): Response
+    {
+        if (!\extension_loaded('parallel')) {
+            return $this->json(['error' => 'ext-parallel not available, use php-zts'], 500);
+        }
+
+        $start = microtime(true);
+
+        $tag = null;
+        $activeTag = $request->query->get('tag');
+
+        if ($activeTag) {
+            $tag = $tags->findOneBy(['name' => $activeTag]);
+        }
+
+        $firstPage = $posts->findLatest(1, $tag);
+        $totalPages = $firstPage->getLastPage();
+        $numResults = $firstPage->getNumResults();
+
+        $numWorkers = max(0, $num);
+        $tagName = $tag?->getName();
+
+        $renderPage = $this->makeRenderPage($em, $twig);
+
+        // Each thread boots its own kernel and gets PageRenderer
+        // from the parallel.services locator (no public services needed).
+        $threadRenderChunk = static function (array $pageNums, ?string $tagName, ?string $activeTag): array {
+            $kernel = \App\Kernel::bootForParallel();
+            $renderer = $kernel->getContainer()->get('parallel.services')->get(\App\Service\PageRenderer::class);
+
+            $result = [];
+            foreach ($pageNums as $p) {
+                $result[$p] = $renderer->render($p, $tagName, $activeTag);
+            }
+
+            $kernel->shutdown();
+            return $result;
+        };
+
+        $bootstrapPath = $this->getParameter('kernel.project_dir') . '/parallel_bootstrap.php';
+
+        // Split pages across main thread + n workers
+        $allPages = range(1, $totalPages);
+        $chunks = array_chunk($allPages, (int) ceil($totalPages / ($numWorkers + 1)));
+
+        // Spawn n threads, each boots a kernel and renders its chunk
+        $futures = [];
+        for ($i = 1; $i <= $numWorkers && $i < count($chunks); $i++) {
+            $runtime = new \parallel\Runtime($bootstrapPath);
+            $futures[] = $runtime->run($threadRenderChunk, [
+                $chunks[$i], $tagName, $activeTag,
+            ]);
+        }
+
+        // Main thread renders its chunk
+        $pages = [];
+        foreach ($chunks[0] as $p) {
+            $pages[$p] = $renderPage($p, $tagName, $activeTag);
+        }
+
+        // Collect thread results
+        foreach ($futures as $future) {
+            foreach ($future->value() as $p => $html) {
+                $pages[$p] = $html;
+            }
+        }
+
+        ksort($pages);
+        $elapsedMs = round((microtime(true) - $start) * 1000, 1);
+
+        return $this->render('blog/index_parallel.html.twig', [
+            'pages' => $pages,
+            'currentPage' => 1,
+            'totalPages' => $totalPages,
+            'numResults' => $numResults,
+            'elapsed_ms' => $elapsedMs,
+            'mode' => $numWorkers > 0 ? "ext-parallel ($numWorkers threads)" : 'ext-parallel (single)',
+            'tagName' => $activeTag,
+        ]);
+    }
+
+    private function makeRenderPage(EntityManagerInterface $em, Environment $twig): \Closure
+    {
+        return function (int $pageNum, ?string $tagName, ?string $activeTag) use ($em, $twig): string {
+            $repo = $em->getRepository(Post::class);
+
+            $qb = $repo->createQueryBuilder('p')
+                ->addSelect('a', 't')
+                ->innerJoin('p.author', 'a')
+                ->leftJoin('p.tags', 't')
+                ->where('p.publishedAt <= :now')
+                ->orderBy('p.publishedAt', 'DESC')
+                ->setParameter('now', new DateTimeImmutable());
+
+            if ($tagName) {
+                $tagEntity = $em->getRepository(Tag::class)->findOneBy(['name' => $tagName]);
+                if ($tagEntity) {
+                    $qb->andWhere(':tag MEMBER OF p.tags')->setParameter('tag', $tagEntity);
+                }
+            }
+
+            $paginator = (new Paginator($qb))->paginate($pageNum);
+
+            return $twig->render('blog/_posts_list.html.twig', [
+                'posts' => iterator_to_array($paginator->getResults()),
+                'activeTag' => $activeTag,
+            ]);
+        };
     }
 
     /**

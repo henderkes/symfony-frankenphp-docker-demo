@@ -6,7 +6,7 @@ ENV SERVER_NAME=:80
 
 RUN apt update && apt-get install -y git unzip
 
-RUN install-php-extensions pdo_pgsql intl apcu
+RUN install-php-extensions pdo_pgsql intl apcu parallel shmop sysvsem pcntl posix
 
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 

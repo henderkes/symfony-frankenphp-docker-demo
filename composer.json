@@ -9,16 +9,21 @@
         "php": ">=8.4",
         "ext-ctype": "*",
         "ext-iconv": "*",
+        "ext-pcntl": "*",
+        "ext-sysvsem": "*",
+        "ext-shmop": "*",
         "ext-pdo_pgsql": "*",
         "doctrine/dbal": "^4.0",
         "doctrine/doctrine-bundle": "^3.2.2",
         "doctrine/doctrine-migrations-bundle": "^4.0.0",
         "doctrine/orm": "^3.5",
+        "henderkes/parallel-fork": "@dev",
         "league/commonmark": "^2.1",
         "symfony/apache-pack": "^1.0",
         "symfony/asset": "^8",
         "symfony/asset-mapper": "^8",
         "symfony/console": "^8",
+        "symfony/doctrine-messenger": "8.0.*",
         "symfony/dotenv": "^8",
         "symfony/expression-language": "^8",
         "symfony/flex": "^2",
@@ -28,6 +33,7 @@
         "symfony/http-client": "^8",
         "symfony/intl": "^8",
         "symfony/mailer": "^8",
+        "symfony/messenger": "8.0.*",
         "symfony/monolog-bundle": "^v4.0.1",
         "symfony/polyfill-intl-messageformatter": "^1.12",
         "symfony/runtime": "^8",
@@ -115,6 +121,13 @@
         "symfony": {
             "allow-contrib": true,
             "require": "8.0.*"
+        },
+        "runtime": {
+            "class": "App\\Runtime\\FrankenPhpRuntime"
         }
-    }
+    },
+    "repositories": [{
+        "type": "vcs",
+        "url": "https://github.com/henderkes/parallelfork.git"
+    }]
 }

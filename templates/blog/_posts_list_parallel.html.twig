@@ -1,0 +1,26 @@
+{% for post in posts %}
+    <article class="post">
+        <h2>
+            <a href="/en/blog/posts/{{ post.slug }}">
+                {{ post.title }}
+            </a>
+        </h2>
+
+        <p class="post-metadata">
+            <span class="metadata">{{ post.published_at }}</span>
+            <span class="metadata">{{ post.author_name }}</span>
+        </p>
+
+        <p>{{ post.summary }}</p>
+
+        {% if post.tags is not empty %}
+            <p class="post-tags">
+                {% for tag in post.tags %}
+                    <span class="badge badge-secondary">{{ tag }}</span>
+                {% endfor %}
+            </p>
+        {% endif %}
+    </article>
+{% else %}
+    <div class="bg-body-tertiary mb-3 p-3 rounded">No posts found</div>
+{% endfor %}
