@@ -20,7 +20,6 @@ use App\Form\CommentType;
 use App\Pagination\Paginator;
 use App\Repository\PostRepository;
 use App\Repository\TagRepository;
-use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bridge\Doctrine\Attribute\MapEntity;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -33,6 +32,7 @@ use Symfony\Component\Routing\Requirement\Requirement;
 use Symfony\Component\Security\Http\Attribute\CurrentUser;
 use Symfony\Component\Security\Http\Attribute\IsGranted;
 use Twig\Environment;
+
 use function Henderkes\ParallelFork\run;
 
 /**
@@ -56,6 +56,8 @@ final class BlogController extends AbstractController
     #[Cache(smaxage: 10)]
     public function index(Request $request, int $page, string $_format, PostRepository $posts, TagRepository $tags): Response
     {
+        $start = microtime(true);
+
         $tag = null;
 
         if ($request->query->has('tag')) {
@@ -67,6 +69,7 @@ final class BlogController extends AbstractController
         return $this->render('blog/index.'.$_format.'.twig', [
             'paginator' => $latestPosts,
             'tagName' => $tag?->getName(),
+            'elapsed_ms' => round((microtime(true) - $start) * 1000, 1),
         ]);
     }
 
@@ -98,7 +101,7 @@ final class BlogController extends AbstractController
 
         // Inline render closure — captures $em and $twig directly (not nested)
         // so the library's connection scanner finds and reconnects them.
-        $renderChunk = function (array $pageNums, ?string $tagName, ?string $activeTag) use ($em, $twig): array {
+        $renderChunk = static function (array $pageNums, ?string $tagName, ?string $activeTag) use ($em, $twig): array {
             $result = [];
             foreach ($pageNums as $pageNum) {
                 $repo = $em->getRepository(Post::class);
@@ -109,7 +112,7 @@ final class BlogController extends AbstractController
                     ->leftJoin('p.tags', 't')
                     ->where('p.publishedAt <= :now')
                     ->orderBy('p.publishedAt', 'DESC')
-                    ->setParameter('now', new DateTimeImmutable());
+                    ->setParameter('now', new \DateTimeImmutable());
 
                 if ($tagName) {
                     $tagEntity = $em->getRepository(Tag::class)->findOneBy(['name' => $tagName]);
@@ -125,12 +128,13 @@ final class BlogController extends AbstractController
                     'activeTag' => $activeTag,
                 ]);
             }
+
             return $result;
         };
 
         // Fork n workers, each renders its chunk sequentially
         $futures = [];
-        for ($i = 1; $i <= $numWorkers && $i < count($chunks); $i++) {
+        for ($i = 1; $i <= $numWorkers && $i < \count($chunks); ++$i) {
             $futures[] = run($renderChunk, [$chunks[$i], $tagName, $activeTag]);
         }
 
@@ -197,10 +201,11 @@ final class BlogController extends AbstractController
             }
 
             $kernel->shutdown();
+
             return $result;
         };
 
-        $bootstrapPath = $this->getParameter('kernel.project_dir') . '/parallel_bootstrap.php';
+        $bootstrapPath = $this->getParameter('kernel.project_dir').'/parallel_bootstrap.php';
 
         // Split pages across main thread + n workers
         $allPages = range(1, $totalPages);
@@ -208,7 +213,7 @@ final class BlogController extends AbstractController
 
         // Spawn n threads, each boots a kernel and renders its chunk
         $futures = [];
-        for ($i = 1; $i <= $numWorkers && $i < count($chunks); $i++) {
+        for ($i = 1; $i <= $numWorkers && $i < \count($chunks); ++$i) {
             $runtime = new \parallel\Runtime($bootstrapPath);
             $futures[] = $runtime->run($threadRenderChunk, [
                 $chunks[$i], $tagName, $activeTag,
@@ -244,7 +249,7 @@ final class BlogController extends AbstractController
 
     private function makeRenderPage(EntityManagerInterface $em, Environment $twig): \Closure
     {
-        return function (int $pageNum, ?string $tagName, ?string $activeTag) use ($em, $twig): string {
+        return static function (int $pageNum, ?string $tagName, ?string $activeTag) use ($em, $twig): string {
             $repo = $em->getRepository(Post::class);
 
             $qb = $repo->createQueryBuilder('p')
@@ -253,7 +258,7 @@ final class BlogController extends AbstractController
                 ->leftJoin('p.tags', 't')
                 ->where('p.publishedAt <= :now')
                 ->orderBy('p.publishedAt', 'DESC')
-                ->setParameter('now', new DateTimeImmutable());
+                ->setParameter('now', new \DateTimeImmutable());
 
             if ($tagName) {
                 $tagEntity = $em->getRepository(Tag::class)->findOneBy(['name' => $tagName]);

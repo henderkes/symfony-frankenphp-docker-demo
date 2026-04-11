@@ -8,6 +8,7 @@
     "require": {
         "php": ">=8.4",
         "ext-ctype": "*",
+        "ext-frankenphp": "*",
         "ext-iconv": "*",
         "ext-pcntl": "*",
         "ext-sysvsem": "*",
@@ -17,7 +18,7 @@
         "doctrine/doctrine-bundle": "^3.2.2",
         "doctrine/doctrine-migrations-bundle": "^4.0.0",
         "doctrine/orm": "^3.5",
-        "henderkes/parallel-fork": "@dev",
+        "henderkes/parallel-fork": "dev-master",
         "league/commonmark": "^2.1",
         "symfony/apache-pack": "^1.0",
         "symfony/asset": "^8",
@@ -53,6 +54,7 @@
         "twig/markdown-extra": "^3.3"
     },
     "require-dev": {
+        "brlabrussia/parallel-stub": "^1.1",
         "dama/doctrine-test-bundle": "^8.0.2",
         "doctrine/doctrine-fixtures-bundle": "^4.1",
         "friendsofphp/php-cs-fixer": "^3.92",

@@ -31,7 +31,7 @@ class Kernel extends BaseKernel
         $env = $_SERVER['APP_ENV'] ?? $_ENV['APP_ENV'] ?? 'dev';
         $debug = (bool) ($_SERVER['APP_DEBUG'] ?? $_ENV['APP_DEBUG'] ?? true);
 
-        if (session_status() === PHP_SESSION_ACTIVE) {
+        if (\PHP_SESSION_ACTIVE === session_status()) {
             session_write_close();
         }
 

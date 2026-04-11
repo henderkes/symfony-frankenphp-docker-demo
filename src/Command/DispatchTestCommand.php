@@ -1,5 +1,14 @@
 <?php
 
+/*
+ * This file is part of the Symfony package.
+ *
+ * (c) Fabien Potencier <fabien@symfony.com>
+ *
+ * For the full copyright and license information, please view the LICENSE
+ * file that was distributed with this source code.
+ */
+
 namespace App\Command;
 
 use App\Message\TestMessage;
@@ -26,10 +35,11 @@ class DispatchTestCommand extends Command
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
         $count = (int) $input->getOption('count');
-        for ($i = 1; $i <= $count; $i++) {
+        for ($i = 1; $i <= $count; ++$i) {
             $this->bus->dispatch(new TestMessage($i));
             $output->writeln("Dispatched message $i");
         }
+
         return Command::SUCCESS;
     }
 }

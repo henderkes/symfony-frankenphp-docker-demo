@@ -1,5 +1,14 @@
 <?php
 
+/*
+ * This file is part of the Symfony package.
+ *
+ * (c) Fabien Potencier <fabien@symfony.com>
+ *
+ * For the full copyright and license information, please view the LICENSE
+ * file that was distributed with this source code.
+ */
+
 namespace App\Runtime;
 
 use Symfony\Component\HttpFoundation\Request;
@@ -46,7 +55,7 @@ class FrankenPhpWorkerRunner implements RunnerInterface
 
         $loops = 0;
         do {
-            $ret = \frankenphp_handle_request($handler);
+            $ret = frankenphp_handle_request($handler);
 
             if ($this->kernel instanceof TerminableInterface && $sfRequest && $sfResponse) {
                 $this->kernel->terminate($sfRequest, $sfResponse);
