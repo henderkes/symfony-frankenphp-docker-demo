@@ -13,7 +13,6 @@ namespace App\MessageHandler;
 
 use App\Message\TestMessage;
 use Symfony\Component\Messenger\Attribute\AsMessageHandler;
-use const FILE_APPEND;
 
 #[AsMessageHandler]
 class TestMessageHandler
@@ -32,6 +31,6 @@ class TestMessageHandler
         }
 
         // Parent: fire and forget, don't wait
-        file_put_contents('/tmp/messenger_parent_'.getmypid(), "handled msg={$message->id} child=$pid\n", FILE_APPEND);
+        file_put_contents('/tmp/messenger_parent_'.getmypid(), "handled msg={$message->id} child=$pid\n", \FILE_APPEND);
     }
 }

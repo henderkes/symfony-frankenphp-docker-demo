@@ -12,7 +12,6 @@
 namespace App\Entity;
 
 use App\Repository\UserRepository;
-use Deprecated;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
 use Symfony\Component\Security\Core\User\PasswordAuthenticatedUserInterface;
@@ -142,7 +141,7 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
      *
      * {@inheritdoc}
      */
-    #[Deprecated]
+    #[\Deprecated]
     public function eraseCredentials(): void
     {
         // if you had a plainPassword property, you'd nullify it here

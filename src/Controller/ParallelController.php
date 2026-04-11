@@ -19,16 +19,12 @@ use Henderkes\ParallelFork\Channel;
 use Henderkes\ParallelFork\Events;
 use Henderkes\ParallelFork\Runtime;
 use Henderkes\ParallelFork\Sync;
-use RuntimeException;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\Routing\Attribute\Route;
 
-use Throwable;
-use function count;
 use function Henderkes\ParallelFork\count as cpuCount;
 use function Henderkes\ParallelFork\run;
-use function strlen;
 
 #[Route('/parallel')]
 class ParallelController extends AbstractController
@@ -37,7 +33,7 @@ class ParallelController extends AbstractController
     public function index(EntityManagerInterface $em): JsonResponse
     {
         $start = microtime(true);
-        $tagsBefore = count($em->getRepository(Tag::class)->findAll());
+        $tagsBefore = \count($em->getRepository(Tag::class)->findAll());
 
         // 1. Parallel DB READS
         $fPosts = run(static function () use ($em) {
@@ -71,7 +67,7 @@ class ParallelController extends AbstractController
             return [
                 'post_title' => $post->getTitle(),
                 'author_username' => $author->getUsername(),
-                'comment_count' => count($comments),
+                'comment_count' => \count($comments),
                 'first_comment' => $comments->first() ? $comments->first()->getContent() : null,
                 'tag_names' => array_map(static fn ($t) => $t->getName(), $tags->toArray()),
             ];
@@ -92,7 +88,7 @@ class ParallelController extends AbstractController
             $content = 'Written by child pid='.getmypid().' at '.date('c');
             file_put_contents($path, $content);
 
-            return ['path' => $path, 'size' => strlen($content)];
+            return ['path' => $path, 'size' => \strlen($content)];
         });
 
         // 4. Parallel CPU work
@@ -114,7 +110,7 @@ class ParallelController extends AbstractController
 
         // Verify: parent can see the child's DB write
         $em->clear();
-        $tagsAfter = count($em->getRepository(Tag::class)->findAll());
+        $tagsAfter = \count($em->getRepository(Tag::class)->findAll());
 
         // Verify: parent can read the child's file
         $fileContent = file_get_contents('/tmp/frankenphp_parallel_file_test.txt');
@@ -122,8 +118,8 @@ class ParallelController extends AbstractController
         return $this->json([
             'elapsed_s' => round(microtime(true) - $start, 4),
             'reads' => [
-                'posts' => count($posts),
-                'users' => count($users),
+                'posts' => \count($posts),
+                'users' => \count($users),
             ],
             'lazy_loading' => $lazyResult,
             'db_write' => [
@@ -216,7 +212,7 @@ class ParallelController extends AbstractController
             }
             $ch->send('DONE');
 
-            return count($primes);
+            return \count($primes);
         });
 
         // Parent receives until sentinel
@@ -237,7 +233,7 @@ class ParallelController extends AbstractController
             'elapsed_s' => round(microtime(true) - $start, 4),
             'description' => 'Anonymous channel: child streams prime squares to parent',
             'child_sent' => $childCount,
-            'parent_received' => count($received),
+            'parent_received' => \count($received),
             'data' => $received,
         ]);
     }
@@ -308,7 +304,7 @@ class ParallelController extends AbstractController
 
         $f2 = $runtime->run(static function () {
             usleep(50_000);
-            throw new RuntimeException('task2 intentional failure');
+            throw new \RuntimeException('task2 intentional failure');
         });
         $events->addFuture('will_fail', $f2);
 
@@ -452,13 +448,13 @@ class ParallelController extends AbstractController
         $rt2 = new Runtime();
 
         $f1 = $rt1->run(static function () use ($em) {
-            $count = count($em->getRepository(Post::class)->findAll());
+            $count = \count($em->getRepository(Post::class)->findAll());
 
             return ['runtime' => 1, 'pid' => getmypid(), 'post_count' => $count];
         });
 
         $f2 = $rt2->run(static function () use ($em) {
-            $count = count($em->getRepository(User::class)->findAll());
+            $count = \count($em->getRepository(User::class)->findAll());
 
             return ['runtime' => 2, 'pid' => getmypid(), 'user_count' => $count];
         });
@@ -524,12 +520,12 @@ class ParallelController extends AbstractController
 
         // 3. Exception propagation from child
         $failing = $runtime->run(static function () {
-            throw new RuntimeException('Intentional child error');
+            throw new \RuntimeException('Intentional child error');
         });
         $errorResult = ['propagated' => false, 'message' => null];
         try {
             $failing->value();
-        } catch (Throwable $e) {
+        } catch (\Throwable $e) {
             $errorResult = [
                 'propagated' => true,
                 'class' => $e::class,
@@ -565,7 +561,7 @@ class ParallelController extends AbstractController
         $numCpus = cpuCount();
 
         $data = range(1, 120);
-        $chunks = array_chunk($data, (int) ceil(count($data) / $numCpus));
+        $chunks = array_chunk($data, (int) ceil(\count($data) / $numCpus));
 
         $runtime = new Runtime();
         $futures = [];
@@ -601,8 +597,8 @@ class ParallelController extends AbstractController
             'elapsed_s' => round(microtime(true) - $start, 4),
             'description' => "Fan-out/fan-in: split 120 items across $numCpus workers (detected CPUs)",
             'cpu_count' => $numCpus,
-            'chunks' => count($chunks),
-            'total_processed' => count($allResults),
+            'chunks' => \count($chunks),
+            'total_processed' => \count($allResults),
             'primes_found' => $primes,
             'pid_distribution' => $pidDistribution,
         ]);
@@ -630,7 +626,7 @@ class ParallelController extends AbstractController
             }
             $pipe1->send('END');
 
-            return 'stage1: sent '. count($posts).' posts';
+            return 'stage1: sent '.\count($posts).' posts';
         });
 
         // Stage 2: transform titles
@@ -658,7 +654,7 @@ class ParallelController extends AbstractController
                     $pipe3->send('END');
                     break;
                 }
-                $msg['char_count'] = strlen($msg['title']);
+                $msg['char_count'] = \strlen($msg['title']);
                 $msg['vowel_count'] = preg_match_all('/[aeiou]/i', $msg['title']);
                 $msg['stage3_pid'] = getmypid();
                 $pipe3->send($msg);

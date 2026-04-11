@@ -23,7 +23,6 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use Symfony\Component\Mailer\MailerInterface;
 use Symfony\Component\Mime\Email;
-use function sprintf;
 
 /**
  * A console command that lists all the existing users.
@@ -131,7 +130,7 @@ final class ListUsersCommand
         $email = (new Email())
             ->from($this->emailSender)
             ->to($recipient)
-            ->subject(sprintf('app:list-users report (%s)', date('Y-m-d H:i:s')))
+            ->subject(\sprintf('app:list-users report (%s)', date('Y-m-d H:i:s')))
             ->text($contents);
 
         $this->mailer->send($email);

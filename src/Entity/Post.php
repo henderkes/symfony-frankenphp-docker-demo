@@ -12,7 +12,6 @@
 namespace App\Entity;
 
 use App\Repository\PostRepository;
-use DateTimeImmutable;
 use Doctrine\Common\Collections\ArrayCollection;
 use Doctrine\Common\Collections\Collection;
 use Doctrine\DBAL\Types\Types;
@@ -57,7 +56,7 @@ class Post
     private ?string $content = null;
 
     #[ORM\Column]
-    private DateTimeImmutable $publishedAt;
+    private \DateTimeImmutable $publishedAt;
 
     #[ORM\ManyToOne(targetEntity: User::class)]
     #[ORM\JoinColumn(nullable: false)]
@@ -81,7 +80,7 @@ class Post
 
     public function __construct()
     {
-        $this->publishedAt = new DateTimeImmutable();
+        $this->publishedAt = new \DateTimeImmutable();
         $this->comments = new ArrayCollection();
         $this->tags = new ArrayCollection();
     }
@@ -121,12 +120,12 @@ class Post
         $this->content = $content;
     }
 
-    public function getPublishedAt(): DateTimeImmutable
+    public function getPublishedAt(): \DateTimeImmutable
     {
         return $this->publishedAt;
     }
 
-    public function setPublishedAt(DateTimeImmutable $publishedAt): void
+    public function setPublishedAt(\DateTimeImmutable $publishedAt): void
     {
         $this->publishedAt = $publishedAt;
     }

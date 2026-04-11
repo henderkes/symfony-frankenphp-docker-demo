@@ -13,7 +13,6 @@ namespace App\Twig;
 
 use Symfony\Component\Intl\Locales;
 use Twig\Attribute\AsTwigFunction;
-use function in_array;
 
 /**
  * See https://symfony.com/doc/current/templating/twig_extension.html.
@@ -69,6 +68,6 @@ final class AppExtension
     {
         $locale = $locale ?? $this->defaultLocale;
 
-        return in_array($locale, ['ar', 'fa', 'he', 'ur', 'ps', 'sd'], true);
+        return \in_array($locale, ['ar', 'fa', 'he', 'ur', 'ps', 'sd'], true);
     }
 }

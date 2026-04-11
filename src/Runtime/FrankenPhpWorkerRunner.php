@@ -15,9 +15,6 @@ use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpKernel\HttpKernelInterface;
 use Symfony\Component\HttpKernel\TerminableInterface;
 use Symfony\Component\Runtime\RunnerInterface;
-use function extension_loaded;
-use function function_exists;
-use const ARRAY_FILTER_USE_KEY;
 
 class FrankenPhpWorkerRunner implements RunnerInterface
 {
@@ -32,7 +29,7 @@ class FrankenPhpWorkerRunner implements RunnerInterface
         // Prevent worker script termination when a client connection is interrupted
         ignore_user_abort(true);
 
-        $server = array_filter($_SERVER, static fn (string $key) => !str_starts_with($key, 'HTTP_'), ARRAY_FILTER_USE_KEY);
+        $server = array_filter($_SERVER, static fn (string $key) => !str_starts_with($key, 'HTTP_'), \ARRAY_FILTER_USE_KEY);
         $server['APP_RUNTIME_MODE'] = 'web=1&worker=1';
 
         $handler = function () use ($server, &$sfRequest, &$sfResponse): void {
@@ -43,7 +40,7 @@ class FrankenPhpWorkerRunner implements RunnerInterface
             memory_reset_peak_usage();
 
             // Connect to the Xdebug client if it's available
-            if (extension_loaded('xdebug') && function_exists('xdebug_connect_to_client')) {
+            if (\extension_loaded('xdebug') && \function_exists('xdebug_connect_to_client')) {
                 xdebug_connect_to_client();
             }
 

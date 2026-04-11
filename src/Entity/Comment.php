@@ -11,7 +11,6 @@
 
 namespace App\Entity;
 
-use DateTimeImmutable;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
 use Symfony\Component\Validator\Constraints as Assert;
@@ -45,7 +44,7 @@ class Comment
     private ?string $content = null;
 
     #[ORM\Column]
-    private DateTimeImmutable $publishedAt;
+    private \DateTimeImmutable $publishedAt;
 
     #[ORM\ManyToOne(targetEntity: User::class)]
     #[ORM\JoinColumn(nullable: false)]
@@ -53,7 +52,7 @@ class Comment
 
     public function __construct()
     {
-        $this->publishedAt = new DateTimeImmutable();
+        $this->publishedAt = new \DateTimeImmutable();
     }
 
     #[Assert\IsTrue(message: 'comment.is_spam')]
@@ -79,12 +78,12 @@ class Comment
         $this->content = $content;
     }
 
-    public function getPublishedAt(): DateTimeImmutable
+    public function getPublishedAt(): \DateTimeImmutable
     {
         return $this->publishedAt;
     }
 
-    public function setPublishedAt(DateTimeImmutable $publishedAt): void
+    public function setPublishedAt(\DateTimeImmutable $publishedAt): void
     {
         $this->publishedAt = $publishedAt;
     }

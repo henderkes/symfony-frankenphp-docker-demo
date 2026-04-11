@@ -20,7 +20,6 @@ use App\Kernel;
 use App\Repository\PostRepository;
 use App\Repository\TagRepository;
 use App\Service\PageRenderer;
-use Closure;
 use Doctrine\ORM\EntityManagerInterface;
 use parallel\Runtime;
 use Symfony\Bridge\Doctrine\Attribute\MapEntity;
@@ -34,8 +33,6 @@ use Symfony\Component\Routing\Requirement\Requirement;
 use Symfony\Component\Security\Http\Attribute\CurrentUser;
 use Symfony\Component\Security\Http\Attribute\IsGranted;
 
-use function count;
-use function extension_loaded;
 use function Henderkes\ParallelFork\run;
 
 /**
@@ -89,7 +86,7 @@ final class BlogController extends AbstractController
         $activeTag = $request->query->get('tag');
 
         // $em is captured so the library's connection scanner finds and reconnects it
-        $pages = $this->forkMap(range(1, $firstPage->getLastPage()), max(0, $num), static function (array $pageNums) use ($renderer, $tagName, $activeTag, $em) {
+        $pages = $this->forkMap(range(1, $firstPage->getLastPage()), max(0, $num), static function (array $pageNums) use ($renderer, $tagName, $activeTag) {
             $result = [];
             foreach ($pageNums as $p) {
                 $result[$p] = $renderer->render($renderer->fetch($p, $tagName), $activeTag);
@@ -116,7 +113,7 @@ final class BlogController extends AbstractController
     #[Cache(smaxage: 10)]
     public function extParallel(Request $request, int $num, PostRepository $posts, TagRepository $tags, PageRenderer $renderer): Response
     {
-        if (!extension_loaded('parallel')) {
+        if (!\extension_loaded('parallel')) {
             return $this->json(['error' => 'ext-parallel not available, use php-zts'], 500);
         }
 
@@ -147,10 +144,10 @@ final class BlogController extends AbstractController
 
         // Split pages across main thread + n workers
         $allPages = range(1, $firstPage->getLastPage());
-        $chunks = array_chunk($allPages, (int) ceil(count($allPages) / ($numWorkers + 1)));
+        $chunks = array_chunk($allPages, (int) ceil(\count($allPages) / ($numWorkers + 1)));
 
         $futures = [];
-        for ($i = 1; $i <= $numWorkers && $i < count($chunks); ++$i) {
+        for ($i = 1; $i <= $numWorkers && $i < \count($chunks); ++$i) {
             $runtime = new Runtime($bootstrapPath);
             $futures[] = $runtime->run($threadRenderChunk, [$chunks[$i], $tagName, $activeTag]);
         }
@@ -182,13 +179,18 @@ final class BlogController extends AbstractController
 
     /**
      * Split items across main process + n fork workers, collect merged results.
+     *
+     * @param list<int>                               $items
+     * @param \Closure(list<int>): array<int, string> $work
+     *
+     * @return array<int, string>
      */
-    private function forkMap(array $items, int $numWorkers, Closure $work): array
+    private function forkMap(array $items, int $numWorkers, \Closure $work): array
     {
-        $chunks = array_chunk($items, max(1, (int) ceil(count($items) / ($numWorkers + 1))));
+        $chunks = array_chunk($items, max(1, (int) ceil(\count($items) / ($numWorkers + 1))));
 
         $futures = [];
-        for ($i = 1; $i <= $numWorkers && $i < count($chunks); ++$i) {
+        for ($i = 1; $i <= $numWorkers && $i < \count($chunks); ++$i) {
             $futures[] = run($work, [$chunks[$i]]);
         }
 

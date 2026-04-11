@@ -14,7 +14,6 @@ namespace App\Entity;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
 use JsonSerializable;
-use Stringable;
 
 /**
  * Defines the properties of the Tag entity to represent the post tags.
@@ -25,7 +24,7 @@ use Stringable;
  */
 #[ORM\Entity]
 #[ORM\Table(name: 'symfony_demo_tag')]
-class Tag implements Stringable, JsonSerializable
+class Tag implements \Stringable, \JsonSerializable
 {
     #[ORM\Id]
     #[ORM\GeneratedValue]

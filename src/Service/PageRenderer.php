@@ -27,6 +27,8 @@ class PageRenderer
 
     /**
      * Fetch a page of posts as plain arrays (serializable, fork-safe).
+     *
+     * @return list<array{title: string, slug: string, summary: string, publishedAt: \DateTimeImmutable, authorFullName: string, tags: list<string>}>
      */
     public function fetch(int $pageNum, ?string $tagName): array
     {
@@ -57,6 +59,8 @@ class PageRenderer
 
     /**
      * Render post data to HTML.
+     *
+     * @param list<array<string, mixed>> $posts
      */
     public function render(array $posts, ?string $activeTag): string
     {
