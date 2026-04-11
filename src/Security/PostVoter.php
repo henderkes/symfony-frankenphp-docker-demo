@@ -16,8 +16,6 @@ use App\Entity\User;
 use Symfony\Component\Security\Core\Authentication\Token\TokenInterface;
 use Symfony\Component\Security\Core\Authorization\Voter\Vote;
 use Symfony\Component\Security\Core\Authorization\Voter\Voter;
-use function in_array;
-use function sprintf;
 
 /**
  * It grants or denies permissions for actions related to blog posts (such as
@@ -40,7 +38,7 @@ final class PostVoter extends Voter
     protected function supports(string $attribute, mixed $subject): bool
     {
         // this voter is only executed on Post objects and for three specific permissions
-        return $subject instanceof Post && in_array($attribute, [self::SHOW, self::EDIT, self::DELETE], true);
+        return $subject instanceof Post && \in_array($attribute, [self::SHOW, self::EDIT, self::DELETE], true);
     }
 
     /**
@@ -55,7 +53,7 @@ final class PostVoter extends Voter
             // votes can include explanations about the decisions. These can be:
             //   * internal: not shown to the end user, but useful for logging or debugging (you can include technical details)
             //   * public: (as in this case) meant to be shown to the end user (make sure to not include sensitive information)
-            $vote?->addReason(sprintf('There is no user logged in, so it\'s not possible to %s the blog post.', $attribute));
+            $vote?->addReason(\sprintf('There is no user logged in, so it\'s not possible to %s the blog post.', $attribute));
 
             return false;
         }
@@ -67,7 +65,7 @@ final class PostVoter extends Voter
             return true;
         }
 
-        $vote?->addReason(sprintf('You can\'t %s this blog post because you are not its author.', $attribute));
+        $vote?->addReason(\sprintf('You can\'t %s this blog post because you are not its author.', $attribute));
 
         return false;
     }

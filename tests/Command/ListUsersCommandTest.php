@@ -11,7 +11,6 @@
 
 namespace App\Tests\Command;
 
-use Generator;
 use PHPUnit\Framework\Attributes\DataProvider;
 
 final class ListUsersCommandTest extends AbstractCommandTestCase
@@ -30,7 +29,7 @@ final class ListUsersCommandTest extends AbstractCommandTestCase
         $this->assertSame($emptyDisplayLines + $maxResults, mb_substr_count($tester->getDisplay(), "\n"));
     }
 
-    public static function maxResultsProvider(): Generator
+    public static function maxResultsProvider(): \Generator
     {
         yield [1];
         yield [2];
