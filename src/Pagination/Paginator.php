@@ -14,6 +14,8 @@ namespace App\Pagination;
 use Doctrine\ORM\QueryBuilder as DoctrineQueryBuilder;
 use Doctrine\ORM\Tools\Pagination\CountWalker;
 use Doctrine\ORM\Tools\Pagination\Paginator as DoctrinePaginator;
+use Traversable;
+use function count;
 
 /**
  * @author Javier Eguiluz <javier.eguiluz@gmail.com>
@@ -32,9 +34,9 @@ final class Paginator
     private int $numResults;
 
     /**
-     * @var \Traversable<array-key, object>
+     * @var Traversable<array-key, object>
      */
-    private \Traversable $results;
+    private Traversable $results;
 
     public function __construct(
         private readonly DoctrineQueryBuilder $queryBuilder,
@@ -55,7 +57,7 @@ final class Paginator
         /** @var array<string, mixed> $joinDqlParts */
         $joinDqlParts = $this->queryBuilder->getDQLPart('join');
 
-        if (0 === \count($joinDqlParts)) {
+        if (0 === count($joinDqlParts)) {
             $query->setHint(CountWalker::HINT_DISTINCT, false);
         }
 
@@ -65,7 +67,7 @@ final class Paginator
         /** @var array<string, mixed> $havingDqlParts */
         $havingDqlParts = $this->queryBuilder->getDQLPart('having');
 
-        $useOutputWalkers = \count($havingDqlParts ?: []) > 0;
+        $useOutputWalkers = count($havingDqlParts ?: []) > 0;
         $paginator->setUseOutputWalkers($useOutputWalkers);
 
         $this->results = $paginator->getIterator();
@@ -120,9 +122,9 @@ final class Paginator
     }
 
     /**
-     * @return \Traversable<int, object>
+     * @return Traversable<int, object>
      */
-    public function getResults(): \Traversable
+    public function getResults(): Traversable
     {
         return $this->results;
     }

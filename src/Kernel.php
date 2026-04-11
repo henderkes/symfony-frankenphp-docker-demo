@@ -16,6 +16,7 @@ use Symfony\Bundle\FrameworkBundle\Kernel\MicroKernelTrait;
 use Symfony\Component\DependencyInjection\Compiler\PassConfig;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\HttpKernel\Kernel as BaseKernel;
+use const PHP_SESSION_ACTIVE;
 
 class Kernel extends BaseKernel
 {
@@ -31,7 +32,7 @@ class Kernel extends BaseKernel
         $env = $_SERVER['APP_ENV'] ?? $_ENV['APP_ENV'] ?? 'dev';
         $debug = (bool) ($_SERVER['APP_DEBUG'] ?? $_ENV['APP_DEBUG'] ?? true);
 
-        if (\PHP_SESSION_ACTIVE === session_status()) {
+        if (PHP_SESSION_ACTIVE === session_status()) {
             session_write_close();
         }
 

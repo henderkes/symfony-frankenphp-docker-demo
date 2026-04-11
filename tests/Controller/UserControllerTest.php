@@ -13,9 +13,11 @@ namespace App\Tests\Controller;
 
 use App\Entity\User;
 use App\Repository\UserRepository;
+use Generator;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 use Symfony\Component\HttpFoundation\Response;
+use function sprintf;
 
 /**
  * Functional test for the controllers defined inside the UserController used
@@ -43,11 +45,11 @@ final class UserControllerTest extends WebTestCase
         $this->assertResponseRedirects(
             'http://localhost/en/login',
             Response::HTTP_FOUND,
-            \sprintf('The %s secure URL redirects to the login form.', $url)
+            sprintf('The %s secure URL redirects to the login form.', $url)
         );
     }
 
-    public static function getUrlsForAnonymousUsers(): \Generator
+    public static function getUrlsForAnonymousUsers(): Generator
     {
         yield ['GET', '/en/profile/edit'];
         yield ['GET', '/en/profile/change-password'];

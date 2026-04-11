@@ -12,8 +12,10 @@
 namespace App\Tests\Command;
 
 use App\Repository\UserRepository;
+use Generator;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
+use const PHP_OS_FAMILY;
 
 final class AddUserCommandTest extends AbstractCommandTestCase
 {
@@ -29,7 +31,7 @@ final class AddUserCommandTest extends AbstractCommandTestCase
 
     protected function setUp(): void
     {
-        if ('Windows' === \PHP_OS_FAMILY) {
+        if ('Windows' === PHP_OS_FAMILY) {
             $this->markTestSkipped('`stty` is required to test this command.');
         }
     }
@@ -75,7 +77,7 @@ final class AddUserCommandTest extends AbstractCommandTestCase
      * This is used to execute the same test twice: first for normal users
      * (isAdmin = false) and then for admin users (isAdmin = true).
      */
-    public static function isAdminDataProvider(): \Generator
+    public static function isAdminDataProvider(): Generator
     {
         yield [false];
         yield [true];

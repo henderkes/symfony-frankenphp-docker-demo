@@ -25,11 +25,12 @@ class PageRenderer
     ) {
     }
 
-    public function render(int $pageNum, ?string $tagName, ?string $activeTag): string
+    /**
+     * Fetch a page of posts as plain arrays (serializable, fork-safe).
+     */
+    public function fetch(int $pageNum, ?string $tagName): array
     {
-        $repo = $this->em->getRepository(Post::class);
-
-        $qb = $repo->createQueryBuilder('p')
+        $qb = $this->em->getRepository(Post::class)->createQueryBuilder('p')
             ->addSelect('a', 't')
             ->innerJoin('p.author', 'a')
             ->leftJoin('p.tags', 't')
@@ -44,15 +45,24 @@ class PageRenderer
             }
         }
 
-        $paginator = (new Paginator($qb))->paginate($pageNum);
+        return array_map(static fn ($post) => [
+            'title' => $post->getTitle(),
+            'slug' => $post->getSlug(),
+            'summary' => $post->getSummary(),
+            'publishedAt' => $post->getPublishedAt(),
+            'authorFullName' => $post->getAuthor()->getFullName(),
+            'tags' => array_map(static fn ($t) => $t->getName(), $post->getTags()->toArray()),
+        ], iterator_to_array((new Paginator($qb))->paginate($pageNum)->getResults()));
+    }
 
-        $html = $this->twig->render('blog/_posts_list.html.twig', [
-            'posts' => iterator_to_array($paginator->getResults()),
+    /**
+     * Render post data to HTML.
+     */
+    public function render(array $posts, ?string $activeTag): string
+    {
+        return $this->twig->render('blog/_posts_list.html.twig', [
+            'posts' => $posts,
             'activeTag' => $activeTag,
         ]);
-
-        $this->em->clear();
-
-        return $html;
     }
 }

@@ -14,9 +14,11 @@ namespace App\Repository;
 use App\Entity\Post;
 use App\Entity\Tag;
 use App\Pagination\Paginator;
+use DateTimeImmutable;
 use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
 use Doctrine\Persistence\ManagerRegistry;
 
+use function count;
 use function Symfony\Component\String\u;
 
 /**
@@ -48,7 +50,7 @@ class PostRepository extends ServiceEntityRepository
             ->leftJoin('p.tags', 't')
             ->where('p.publishedAt <= :now')
             ->orderBy('p.publishedAt', 'DESC')
-            ->setParameter('now', new \DateTimeImmutable())
+            ->setParameter('now', new DateTimeImmutable())
         ;
 
         if (null !== $tag) {
@@ -66,7 +68,7 @@ class PostRepository extends ServiceEntityRepository
     {
         $searchTerms = $this->extractSearchTerms($query);
 
-        if (0 === \count($searchTerms)) {
+        if (0 === count($searchTerms)) {
             return [];
         }
 

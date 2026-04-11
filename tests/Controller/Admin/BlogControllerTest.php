@@ -11,9 +11,11 @@
 
 namespace App\Tests\Controller\Admin;
 
+use App\Entity\Post;
 use App\Entity\User;
 use App\Repository\PostRepository;
 use App\Repository\UserRepository;
+use Generator;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
@@ -66,7 +68,7 @@ class BlogControllerTest extends WebTestCase
         $this->assertResponseStatusCodeSame(Response::HTTP_FORBIDDEN);
     }
 
-    public static function getUrlsForRegularUsers(): \Generator
+    public static function getUrlsForRegularUsers(): Generator
     {
         yield ['GET', '/en/admin/post/'];
         yield ['GET', '/en/admin/post/1'];
@@ -167,7 +169,7 @@ class BlogControllerTest extends WebTestCase
         /** @var PostRepository $postRepository */
         $postRepository = static::getContainer()->get(PostRepository::class);
 
-        /** @var \App\Entity\Post $post */
+        /** @var Post $post */
         $post = $postRepository->find(1);
 
         $this->assertSame($newBlogPostTitle, $post->getTitle());

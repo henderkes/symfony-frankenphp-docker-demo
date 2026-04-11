@@ -26,6 +26,7 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
 use Symfony\Component\Stopwatch\Stopwatch;
 
+use function sprintf;
 use function Symfony\Component\String\u;
 
 /**
@@ -181,12 +182,12 @@ final class AddUserCommand extends Command
         $this->entityManager->persist($user);
         $this->entityManager->flush();
 
-        $this->io->success(\sprintf('%s was successfully created: %s (%s)', $isAdmin ? 'Administrator user' : 'User', $user->getUsername(), $user->getEmail()));
+        $this->io->success(sprintf('%s was successfully created: %s (%s)', $isAdmin ? 'Administrator user' : 'User', $user->getUsername(), $user->getEmail()));
 
         $event = $stopwatch->stop('add-user-command');
 
         if ($this->io->isVerbose()) {
-            $this->io->comment(\sprintf('New user database id: %d / Elapsed time: %.2f ms / Consumed memory: %.2f MB', $user->getId(), $event->getDuration(), $event->getMemory() / (1024 ** 2)));
+            $this->io->comment(sprintf('New user database id: %d / Elapsed time: %.2f ms / Consumed memory: %.2f MB', $user->getId(), $event->getDuration(), $event->getMemory() / (1024 ** 2)));
         }
 
         return Command::SUCCESS;
@@ -198,7 +199,7 @@ final class AddUserCommand extends Command
         $existingUser = $this->users->findOneBy(['username' => $username]);
 
         if (null !== $existingUser) {
-            throw new RuntimeException(\sprintf('There is already a user registered with the "%s" username.', $username));
+            throw new RuntimeException(sprintf('There is already a user registered with the "%s" username.', $username));
         }
 
         // validate password and email if is not this input means interactive.
@@ -210,7 +211,7 @@ final class AddUserCommand extends Command
         $existingEmail = $this->users->findOneBy(['email' => $email]);
 
         if (null !== $existingEmail) {
-            throw new RuntimeException(\sprintf('There is already a user registered with the "%s" email.', $email));
+            throw new RuntimeException(sprintf('There is already a user registered with the "%s" email.', $email));
         }
     }
 

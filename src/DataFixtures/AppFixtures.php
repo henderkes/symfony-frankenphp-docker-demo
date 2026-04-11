@@ -15,12 +15,15 @@ use App\Entity\Comment;
 use App\Entity\Post;
 use App\Entity\Tag;
 use App\Entity\User;
+use DateTimeImmutable;
 use Doctrine\Bundle\FixturesBundle\Fixture;
 use Doctrine\Persistence\ObjectManager;
+use Exception;
 use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
 use Symfony\Component\String\AbstractUnicodeString;
 use Symfony\Component\String\Slugger\SluggerInterface;
 
+use function array_slice;
 use function Symfony\Component\String\u;
 
 final class AppFixtures extends Fixture
@@ -85,7 +88,7 @@ final class AppFixtures extends Fixture
                 $comment = new Comment();
                 $comment->setAuthor($this->getReference('john_user', User::class));
                 $comment->setContent($this->getRandomText(random_int(255, 512)));
-                $comment->setPublishedAt(new \DateTimeImmutable('now + '.$i.'seconds'));
+                $comment->setPublishedAt(new DateTimeImmutable('now + '.$i.'seconds'));
 
                 $post->addComment($comment);
             }
@@ -128,9 +131,9 @@ final class AppFixtures extends Fixture
     }
 
     /**
-     * @return array<int, array{0: string, 1: AbstractUnicodeString, 2: string, 3: string, 4: \DateTimeImmutable, 5: User, 6: array<Tag>}>
+     * @return array<int, array{0: string, 1: AbstractUnicodeString, 2: string, 3: string, 4: DateTimeImmutable, 5: User, 6: array<Tag>}>
      *
-     * @throws \Exception
+     * @throws Exception
      */
     private function getPostData(): array
     {
@@ -143,7 +146,7 @@ final class AppFixtures extends Fixture
                 $this->slugger->slug($title)->lower(),
                 $this->getRandomText(),
                 $this->getPostContent(),
-                (new \DateTimeImmutable('now - '.$i.'days'))->setTime(random_int(8, 17), random_int(7, 49), random_int(0, 59)),
+                (new DateTimeImmutable('now - '.$i.'days'))->setTime(random_int(8, 17), random_int(7, 49), random_int(0, 59)),
                 // Ensure that the first post is written by Jane Doe to simplify tests
                 $this->getReference(['jane_admin', 'tom_admin'][0 === $i ? 0 : random_int(0, 1)], User::class),
                 $this->getRandomTags(),
@@ -248,13 +251,13 @@ final class AppFixtures extends Fixture
     /**
      * @return array<Tag>
      *
-     * @throws \Exception
+     * @throws Exception
      */
     private function getRandomTags(): array
     {
         $tagNames = $this->getTagData();
         shuffle($tagNames);
-        $selectedTags = \array_slice($tagNames, 0, random_int(2, 4));
+        $selectedTags = array_slice($tagNames, 0, random_int(2, 4));
 
         return array_map(
             fn ($tagName) => $this->getReference('tag-'.$tagName, Tag::class),
