@@ -76,7 +76,7 @@ final class BlogController extends AbstractController
     #[Route('/all', name: 'blog_all', defaults: ['num' => '0'], methods: ['GET'])]
     #[Route('/all/{num}', name: 'blog_all_fork', requirements: ['num' => '\d+'], methods: ['GET'])]
     #[Cache(smaxage: 10)]
-    public function all(Request $request, int $num, PostRepository $posts, TagRepository $tags, PageRenderer $renderer, EntityManagerInterface $em): Response
+    public function all(Request $request, int $num, PostRepository $posts, TagRepository $tags, PageRenderer $renderer): Response
     {
         $start = microtime(true);
 
@@ -85,15 +85,32 @@ final class BlogController extends AbstractController
         $tagName = $tag?->getName();
         $activeTag = $request->query->get('tag');
 
-        // $em is captured so the library's connection scanner finds and reconnects it
-        $pages = $this->forkMap(range(1, $firstPage->getLastPage()), max(0, $num), static function (array $pageNums) use ($renderer, $tagName, $activeTag) {
+        $numWorkers = max(0, $num);
+        $allPages = range(1, $firstPage->getLastPage());
+        $chunks = array_chunk($allPages, max(1, (int) ceil(\count($allPages) / ($numWorkers + 1))));
+
+        $renderChunk = static function (array $pageNums) use ($renderer, $tagName, $activeTag) {
             $result = [];
             foreach ($pageNums as $p) {
                 $result[$p] = $renderer->render($renderer->fetch($p, $tagName), $activeTag);
             }
 
             return $result;
-        });
+        };
+
+        // Fork child processes for chunks 1..n, main thread handles chunk 0
+        $futures = [];
+        for ($i = 1; $i <= $numWorkers && $i < \count($chunks); ++$i) {
+            // library gets captured vars from $renderChunk, sees $renderer, scans it recursively,
+            // finds $entityManager property, gets the connection and resets it
+            $futures[] = run($renderChunk, [$chunks[$i]]);
+        }
+
+        $pages = $renderChunk($chunks[0]);
+
+        foreach ($futures as $future) {
+            $pages += $future->value();
+        }
 
         ksort($pages);
 
@@ -175,32 +192,6 @@ final class BlogController extends AbstractController
             'mode' => $numWorkers > 0 ? "ext-parallel ($numWorkers threads)" : 'ext-parallel (single)',
             'tagName' => $activeTag,
         ]);
-    }
-
-    /**
-     * Split items across main process + n fork workers, collect merged results.
-     *
-     * @param list<int>                               $items
-     * @param \Closure(list<int>): array<int, string> $work
-     *
-     * @return array<int, string>
-     */
-    private function forkMap(array $items, int $numWorkers, \Closure $work): array
-    {
-        $chunks = array_chunk($items, max(1, (int) ceil(\count($items) / ($numWorkers + 1))));
-
-        $futures = [];
-        for ($i = 1; $i <= $numWorkers && $i < \count($chunks); ++$i) {
-            $futures[] = run($work, [$chunks[$i]]);
-        }
-
-        $result = $work($chunks[0]);
-
-        foreach ($futures as $future) {
-            $result += $future->value();
-        }
-
-        return $result;
     }
 
     /**
