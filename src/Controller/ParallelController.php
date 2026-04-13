@@ -712,7 +712,7 @@ class ParallelController extends AbstractController
         // Fork multiple children that all use the same EM — the framework's
         // atFork handler (ForkResetSubscriber) reconnects Doctrine in each child
         $futures = [];
-        for ($i = 0; $i < 4; $i++) {
+        for ($i = 0; $i < 4; ++$i) {
             $futures["child_$i"] = $runtime->run(static function () use ($em, $i) {
                 $posts = $em->getRepository(Post::class)->findAll();
                 $users = $em->getRepository(User::class)->findAll();
@@ -771,7 +771,6 @@ class ParallelController extends AbstractController
         $runtime = new Runtime();
 
         // A non-autowired object that simulates a connection pool or external client.
-        // This is NOT a Symfony service — just a plain object created in userland code.
         $apiClient = new class {
             private string $connectionId;
             private int $requestCount = 0;
@@ -814,7 +813,7 @@ class ParallelController extends AbstractController
 
         // Each child should get a fresh connection after the atFork handler runs
         $futures = [];
-        for ($i = 0; $i < 3; $i++) {
+        for ($i = 0; $i < 3; ++$i) {
             $futures["worker_$i"] = $runtime->run(static function () use ($apiClient, $em, $i) {
                 // Use the custom client — should have been reset by atFork
                 $r1 = $apiClient->request("/api/items/$i");
@@ -911,10 +910,10 @@ class ParallelController extends AbstractController
 
         // Fork children that use both Doctrine (framework handler) and cache (user handler)
         $futures = [];
-        for ($i = 0; $i < 3; $i++) {
+        for ($i = 0; $i < 3; ++$i) {
             $futures["child_$i"] = $runtime->run(static function () use ($em, $cache, $i) {
                 // Cache should be empty after atFork clear
-                $cacheEmpty = $cache->count() === 0;
+                $cacheEmpty = 0 === $cache->count();
 
                 // Populate fresh child cache
                 $cache->set("child:$i", "value-$i");
@@ -1119,7 +1118,7 @@ class ParallelController extends AbstractController
             'description' => 'HttpClient in forked children with curl handle reset',
             'parent_warmup_status' => $parentStatus,
             'parent_after_fork_status' => $parentAfterStatus,
-            'parent_still_works' => $parentAfterStatus === 200,
+            'parent_still_works' => 200 === $parentAfterStatus,
             'children' => $childResults,
         ]);
     }

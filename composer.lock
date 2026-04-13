@@ -1344,12 +1344,12 @@
             "source": {
                 "type": "git",
                 "url": "https://github.com/henderkes/ParallelFork.git",
-                "reference": "7009bd8199283e7537a0f97065af1bbc3bb52009"
+                "reference": "b5782f1f7b7405d665273ee111fcc0af05f74e27"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/henderkes/ParallelFork/zipball/7009bd8199283e7537a0f97065af1bbc3bb52009",
-                "reference": "7009bd8199283e7537a0f97065af1bbc3bb52009",
+                "url": "https://api.github.com/repos/henderkes/ParallelFork/zipball/b5782f1f7b7405d665273ee111fcc0af05f74e27",
+                "reference": "b5782f1f7b7405d665273ee111fcc0af05f74e27",
                 "shasum": ""
             },
             "require": {
@@ -1415,7 +1415,7 @@
                 "source": "https://github.com/henderkes/ParallelFork/tree/master",
                 "issues": "https://github.com/henderkes/ParallelFork/issues"
             },
-            "time": "2026-04-13T10:08:06+00:00"
+            "time": "2026-04-13T12:39:49+00:00"
         },
         {
             "name": "league/commonmark",

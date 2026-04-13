@@ -80,7 +80,7 @@ final class AppFixtures extends Fixture
 
         $batchSize = 50;
 
-        for ($i = 0; $i < 1200; $i++) {
+        for ($i = 0; $i < 1200; ++$i) {
             // Generate varied titles
             if ($i < \count($phrases)) {
                 $title = $phrases[$i];
@@ -119,12 +119,12 @@ final class AppFixtures extends Fixture
 
             // Vary comment count: some posts have many, some have none
             $commentCount = match (true) {
-                $i % 10 === 0 => random_int(8, 15),  // every 10th post: lots of comments
-                $i % 3 === 0 => 0,                     // every 3rd post: no comments
+                0 === $i % 10 => random_int(8, 15),  // every 10th post: lots of comments
+                0 === $i % 3 => 0,                     // every 3rd post: no comments
                 default => random_int(1, 5),
             };
 
-            for ($c = 0; $c < $commentCount; $c++) {
+            for ($c = 0; $c < $commentCount; ++$c) {
                 $comment = new Comment();
                 $comment->setAuthor($this->getReference($users[array_rand($users)], User::class));
                 $comment->setContent($this->getRandomText(random_int(100, 512)));
