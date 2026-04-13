@@ -101,8 +101,7 @@ final class BlogController extends AbstractController
         // Fork child processes for chunks 1..n, main thread handles chunk 0
         $futures = [];
         for ($i = 1; $i <= $numWorkers && $i < \count($chunks); ++$i) {
-            // library gets captured vars from $renderChunk, sees $renderer, scans it recursively,
-            // finds $entityManager property, gets the connection and resets it
+            // bundle automatically registers an atFork() handler that resets Doctrine
             $futures[] = run($renderChunk, [$chunks[$i]]);
         }
 
@@ -145,6 +144,7 @@ final class BlogController extends AbstractController
         // Each thread boots its own kernel and gets PageRenderer via service locator
         $threadRenderChunk = static function (array $pageNums, ?string $tagName, ?string $activeTag): array {
             $kernel = Kernel::bootForParallel();
+            /** @noinspection MissingServiceXml */
             $r = $kernel->getContainer()->get('parallel.services')->get(PageRenderer::class);
 
             $result = [];

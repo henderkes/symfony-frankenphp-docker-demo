@@ -17,11 +17,13 @@ use App\Entity\User;
 use Doctrine\ORM\EntityManagerInterface;
 use Henderkes\ParallelFork\Channel;
 use Henderkes\ParallelFork\Events;
+use Henderkes\ParallelFork\Handlers;
 use Henderkes\ParallelFork\Runtime;
 use Henderkes\ParallelFork\Sync;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\Routing\Attribute\Route;
+use Symfony\Contracts\HttpClient\HttpClientInterface;
 
 use function Henderkes\ParallelFork\count as cpuCount;
 use function Henderkes\ParallelFork\run;
@@ -35,7 +37,8 @@ class ParallelController extends AbstractController
         $start = microtime(true);
         $tagsBefore = \count($em->getRepository(Tag::class)->findAll());
 
-        // 1. Parallel DB READS
+        // 1. Parallel DB READS — atFork handler (registered by ForkResetSubscriber)
+        //    reconnects the Doctrine connection in each child process
         $fPosts = run(static function () use ($em) {
             return array_map(
                 static fn ($p) => ['id' => $p->getId(), 'title' => $p->getTitle()],
@@ -194,7 +197,7 @@ class ParallelController extends AbstractController
     }
 
     /**
-     * Anonymous channels: bidirectional parent↔child communication via CoW-inherited channels.
+     * Anonymous channels: bidirectional parent/child communication via CoW-inherited channels.
      */
     #[Route('/channels-anon', name: 'parallel_channels_anon')]
     public function channelsAnonymous(): JsonResponse
@@ -431,7 +434,7 @@ class ParallelController extends AbstractController
     }
 
     /**
-     * Runtime: explicit lifecycle management, multiple runtimes, afterFork hooks.
+     * Runtime: explicit lifecycle management, multiple runtimes, atFork hooks.
      */
     #[Route('/runtime', name: 'parallel_runtime')]
     public function runtimeTest(EntityManagerInterface $em): JsonResponse
@@ -439,8 +442,8 @@ class ParallelController extends AbstractController
         $start = microtime(true);
 
         $hookFile = tempnam('/tmp', 'parallel_hook_');
-        Runtime::afterFork(static function () use ($hookFile) {
-            file_put_contents($hookFile, 'afterFork ran in pid='.getmypid());
+        Runtime::atFork(static function () use ($hookFile) {
+            file_put_contents($hookFile, 'atFork ran in pid='.getmypid());
         });
 
         // Two independent runtimes running concurrently
@@ -478,10 +481,10 @@ class ParallelController extends AbstractController
 
         return $this->json([
             'elapsed_s' => round(microtime(true) - $start, 4),
-            'description' => 'Explicit Runtime lifecycle: two runtimes, afterFork hook, multiple tasks per runtime',
+            'description' => 'Explicit Runtime lifecycle: two runtimes, atFork hook, multiple tasks per runtime',
             'parent_pid' => getmypid(),
             'results' => $results,
-            'after_fork_hook' => $hookContent,
+            'at_fork_hook' => $hookContent,
         ]);
     }
 
@@ -613,10 +616,10 @@ class ParallelController extends AbstractController
         $start = microtime(true);
         $runtime = new Runtime();
 
-        // Stage 1 → Stage 2 → Stage 3, connected by channels
-        $pipe1 = new Channel(); // stage1 → stage2
-        $pipe2 = new Channel(); // stage2 → stage3
-        $pipe3 = new Channel(); // stage3 → parent
+        // Stage 1 -> Stage 2 -> Stage 3, connected by channels
+        $pipe1 = new Channel(); // stage1 -> stage2
+        $pipe2 = new Channel(); // stage2 -> stage3
+        $pipe3 = new Channel(); // stage3 -> parent
 
         // Stage 1: fetch posts from DB, send titles downstream
         $f1 = $runtime->run(static function () use ($em, $pipe1) {
@@ -686,9 +689,438 @@ class ParallelController extends AbstractController
 
         return $this->json([
             'elapsed_s' => round(microtime(true) - $start, 4),
-            'description' => 'Pipeline: 3 stages connected by channels (DB fetch → transform → enrich)',
+            'description' => 'Pipeline: 3 stages connected by channels (DB fetch -> transform -> enrich)',
             'stage_reports' => $stageReports,
             'pipeline_output' => $pipelineResults,
+        ]);
+    }
+
+    /**
+     * Test that atFork handlers from the framework (ForkResetSubscriber) properly
+     * reset the Doctrine connection, allowing children to query independently.
+     */
+    #[Route('/at-fork', name: 'parallel_at_fork')]
+    public function atFork(EntityManagerInterface $em): JsonResponse
+    {
+        $start = microtime(true);
+        $runtime = new Runtime();
+
+        // Warm up the parent connection
+        $parentPosts = $em->getRepository(Post::class)->findAll();
+        $parentPostCount = \count($parentPosts);
+
+        // Fork multiple children that all use the same EM — the framework's
+        // atFork handler (ForkResetSubscriber) reconnects Doctrine in each child
+        $futures = [];
+        for ($i = 0; $i < 4; $i++) {
+            $futures["child_$i"] = $runtime->run(static function () use ($em, $i) {
+                $posts = $em->getRepository(Post::class)->findAll();
+                $users = $em->getRepository(User::class)->findAll();
+
+                // Write from child to prove the connection is fully functional
+                $tag = new Tag("atfork-test-$i-".getmypid());
+                $em->persist($tag);
+                $em->flush();
+
+                return [
+                    'child' => $i,
+                    'pid' => getmypid(),
+                    'post_count' => \count($posts),
+                    'user_count' => \count($users),
+                    'wrote_tag' => $tag->getName(),
+                ];
+            });
+        }
+
+        $childResults = [];
+        foreach ($futures as $name => $f) {
+            $childResults[$name] = $f->value();
+        }
+
+        // Parent EM still works after all children used it
+        $em->clear();
+        $parentPostsAfter = \count($em->getRepository(Post::class)->findAll());
+        $tagsWritten = $em->getRepository(Tag::class)->findBy([], ['id' => 'DESC'], 4);
+        $tagNames = array_map(static fn ($t) => $t->getName(), $tagsWritten);
+
+        $runtime->close();
+
+        return $this->json([
+            'elapsed_s' => round(microtime(true) - $start, 4),
+            'description' => 'atFork handlers: framework-registered Doctrine reset in forked children',
+            'parent_pid' => getmypid(),
+            'parent_post_count_before' => $parentPostCount,
+            'parent_post_count_after' => $parentPostsAfter,
+            'parent_still_works' => $parentPostsAfter === $parentPostCount,
+            'children' => $childResults,
+            'tags_visible_to_parent' => $tagNames,
+        ]);
+    }
+
+    /**
+     * Test user-registered atFork handler for a non-autowired singleton.
+     *
+     * Demonstrates: an object that is NOT a Symfony service (not in the container,
+     * not autowired) but holds state that must be reset after fork. The user
+     * registers their own Runtime::atFork() handler to deal with it.
+     */
+    #[Route('/at-fork-custom', name: 'parallel_at_fork_custom')]
+    public function atForkCustom(EntityManagerInterface $em): JsonResponse
+    {
+        $start = microtime(true);
+        $runtime = new Runtime();
+
+        // A non-autowired object that simulates a connection pool or external client.
+        // This is NOT a Symfony service — just a plain object created in userland code.
+        $apiClient = new class {
+            private string $connectionId;
+            private int $requestCount = 0;
+
+            public function __construct()
+            {
+                $this->connectionId = 'conn-'.getmypid().'-'.bin2hex(random_bytes(4));
+            }
+
+            public function reset(): void
+            {
+                $this->connectionId = 'conn-'.getmypid().'-'.bin2hex(random_bytes(4));
+                $this->requestCount = 0;
+            }
+
+            public function request(string $endpoint): array
+            {
+                ++$this->requestCount;
+
+                return [
+                    'connectionId' => $this->connectionId,
+                    'requestCount' => $this->requestCount,
+                    'pid' => getmypid(),
+                    'endpoint' => $endpoint,
+                ];
+            }
+
+            public function getConnectionId(): string
+            {
+                return $this->connectionId;
+            }
+        };
+
+        $parentConnectionId = $apiClient->getConnectionId();
+
+        // User registers a named atFork handler for this non-autowired object
+        Runtime::atFork('api-client', static function () use ($apiClient) {
+            $apiClient->reset();
+        });
+
+        // Each child should get a fresh connection after the atFork handler runs
+        $futures = [];
+        for ($i = 0; $i < 3; $i++) {
+            $futures["worker_$i"] = $runtime->run(static function () use ($apiClient, $em, $i) {
+                // Use the custom client — should have been reset by atFork
+                $r1 = $apiClient->request("/api/items/$i");
+                $r2 = $apiClient->request("/api/details/$i");
+
+                // Also use Doctrine — reset by the framework's atFork handler
+                $postCount = \count($em->getRepository(Post::class)->findAll());
+
+                return [
+                    'child' => $i,
+                    'connection_id' => $apiClient->getConnectionId(),
+                    'request1' => $r1,
+                    'request2' => $r2,
+                    'post_count' => $postCount,
+                ];
+            });
+        }
+
+        $childResults = [];
+        $childConnectionIds = [];
+        foreach ($futures as $name => $f) {
+            $result = $f->value();
+            $childResults[$name] = $result;
+            $childConnectionIds[] = $result['connection_id'];
+        }
+
+        // Verify: parent's connection ID unchanged, each child got a unique one
+        $allUnique = \count(array_unique($childConnectionIds)) === \count($childConnectionIds);
+        $noneMatchParent = !\in_array($parentConnectionId, $childConnectionIds, true);
+
+        $runtime->close();
+
+        return $this->json([
+            'elapsed_s' => round(microtime(true) - $start, 4),
+            'description' => 'Named atFork handler for non-autowired singleton',
+            'parent_connection_id' => $parentConnectionId,
+            'parent_connection_unchanged' => $apiClient->getConnectionId() === $parentConnectionId,
+            'child_connection_ids_unique' => $allUnique,
+            'no_child_matches_parent' => $noneMatchParent,
+            'children' => $childResults,
+        ]);
+    }
+
+    /**
+     * Test multiple atFork handlers working together: framework handler (Doctrine)
+     * plus user handler (custom client), verifying execution order and independence.
+     */
+    #[Route('/at-fork-multi', name: 'parallel_at_fork_multi')]
+    public function atForkMulti(EntityManagerInterface $em): JsonResponse
+    {
+        $start = microtime(true);
+        $runtime = new Runtime();
+
+        // Track handler execution order via a temp file
+        $orderFile = tempnam('/tmp', 'atfork_order_');
+
+        // A non-autowired cache-like singleton
+        $cache = new class {
+            /** @var array<string, mixed> */
+            private array $store = [];
+
+            public function set(string $key, mixed $value): void
+            {
+                $this->store[$key] = $value;
+            }
+
+            public function get(string $key): mixed
+            {
+                return $this->store[$key] ?? null;
+            }
+
+            public function clear(): void
+            {
+                $this->store = [];
+            }
+
+            public function count(): int
+            {
+                return \count($this->store);
+            }
+        };
+
+        // Populate cache in parent
+        $cache->set('user:1', 'Alice');
+        $cache->set('user:2', 'Bob');
+        $cache->set('config:theme', 'dark');
+        $parentCacheCount = $cache->count();
+
+        // User registers a named handler for cache reset + order tracking
+        Runtime::atFork('app-cache', static function () use ($cache, $orderFile) {
+            $cache->clear();
+            file_put_contents($orderFile, 'user_handler:'.getmypid());
+        });
+
+        // Fork children that use both Doctrine (framework handler) and cache (user handler)
+        $futures = [];
+        for ($i = 0; $i < 3; $i++) {
+            $futures["child_$i"] = $runtime->run(static function () use ($em, $cache, $i) {
+                // Cache should be empty after atFork clear
+                $cacheEmpty = $cache->count() === 0;
+
+                // Populate fresh child cache
+                $cache->set("child:$i", "value-$i");
+
+                // Use Doctrine — connection reset by framework handler
+                $posts = $em->getRepository(Post::class)->findBy([], null, 3);
+                $postTitles = array_map(static fn ($p) => $p->getTitle(), $posts);
+
+                return [
+                    'child' => $i,
+                    'pid' => getmypid(),
+                    'cache_was_empty_after_fork' => $cacheEmpty,
+                    'child_cache_count' => $cache->count(),
+                    'post_titles' => $postTitles,
+                ];
+            });
+        }
+
+        $childResults = [];
+        foreach ($futures as $name => $f) {
+            $childResults[$name] = $f->value();
+        }
+
+        // Parent cache unchanged
+        $parentCacheAfter = $cache->count();
+
+        $orderContent = file_exists($orderFile) ? file_get_contents($orderFile) : 'not written';
+        @unlink($orderFile);
+
+        $runtime->close();
+
+        return $this->json([
+            'elapsed_s' => round(microtime(true) - $start, 4),
+            'description' => 'Multiple atFork handlers: framework (Doctrine) + user (cache clear)',
+            'parent_cache_before' => $parentCacheCount,
+            'parent_cache_after' => $parentCacheAfter,
+            'parent_cache_unchanged' => $parentCacheAfter === $parentCacheCount,
+            'handler_execution_proof' => $orderContent,
+            'children' => $childResults,
+        ]);
+    }
+
+    /**
+     * Override a framework-registered handler with a custom one.
+     *
+     * The ForkResetSubscriber registers a 'doctrine' handler via
+     * Handlers::doctrine(). Here we override it with a custom handler
+     * that adds logging, then verify it runs instead of the default.
+     */
+    #[Route('/at-fork-override', name: 'parallel_at_fork_override')]
+    public function atForkOverride(EntityManagerInterface $em): JsonResponse
+    {
+        $start = microtime(true);
+        $runtime = new Runtime();
+        $logFile = tempnam('/tmp', 'atfork_override_');
+
+        // Override the framework's 'doctrine' handler with a custom one
+        // that wraps the default and also logs
+        $defaultHandler = Handlers::doctrine($em);
+        Runtime::atFork('doctrine', static function () use ($defaultHandler, $logFile) {
+            file_put_contents($logFile, 'custom-doctrine-handler:'.getmypid());
+            $defaultHandler();
+        });
+
+        // Warm up connection
+        $em->getRepository(Post::class)->findAll();
+
+        $future = $runtime->run(static function () use ($em) {
+            return [
+                'pid' => getmypid(),
+                'post_count' => \count($em->getRepository(Post::class)->findAll()),
+            ];
+        });
+
+        $result = $future->value();
+        $logContent = file_exists($logFile) ? file_get_contents($logFile) : 'not written';
+        @unlink($logFile);
+
+        // Restore the default handler so other routes aren't affected
+        Runtime::atFork('doctrine', Handlers::doctrine($em));
+
+        $runtime->close();
+
+        return $this->json([
+            'elapsed_s' => round(microtime(true) - $start, 4),
+            'description' => 'Override: replaced framework doctrine handler with custom logging one',
+            'child_result' => $result,
+            'custom_handler_ran' => str_contains($logContent, 'custom-doctrine-handler'),
+            'handler_log' => $logContent,
+        ]);
+    }
+
+    /**
+     * Remove a named handler entirely and verify it no longer runs.
+     */
+    #[Route('/at-fork-remove', name: 'parallel_at_fork_remove')]
+    public function atForkRemove(EntityManagerInterface $em): JsonResponse
+    {
+        $start = microtime(true);
+        $runtime = new Runtime();
+
+        // Register a named handler then immediately remove it
+        $removedFile = tempnam('/tmp', 'atfork_removed_');
+        @unlink($removedFile);
+        Runtime::atFork('will-be-removed', static function () use ($removedFile) {
+            file_put_contents($removedFile, 'should-not-exist');
+        });
+        Runtime::removeAtFork('will-be-removed');
+
+        // Also register one that stays, to prove removal is targeted
+        $keptFile = tempnam('/tmp', 'atfork_kept_');
+        @unlink($keptFile);
+        Runtime::atFork('will-be-kept', static function () use ($keptFile) {
+            file_put_contents($keptFile, 'kept-handler:'.getmypid());
+        });
+
+        $future = $runtime->run(static function () use ($em) {
+            return [
+                'pid' => getmypid(),
+                'post_count' => \count($em->getRepository(Post::class)->findAll()),
+            ];
+        });
+
+        $result = $future->value();
+        $removedRan = file_exists($removedFile);
+        $keptContent = file_exists($keptFile) ? file_get_contents($keptFile) : 'not written';
+
+        @unlink($removedFile);
+        @unlink($keptFile);
+        Runtime::removeAtFork('will-be-kept');
+        $runtime->close();
+
+        return $this->json([
+            'elapsed_s' => round(microtime(true) - $start, 4),
+            'description' => 'removeAtFork: removed handler does not run, kept handler does',
+            'child_result' => $result,
+            'removed_handler_ran' => $removedRan,
+            'kept_handler_ran' => str_contains($keptContent, 'kept-handler'),
+            'kept_handler_log' => $keptContent,
+        ]);
+    }
+
+    /**
+     * HttpClient in forked children. The bundle's atFork handler resets
+     * the inherited curl_multi/curl_share handles so each child gets its
+     * own connection pool.
+     *
+     * We warm up the parent's connections first to prove the reset works
+     * even when curl handles already exist.
+     */
+    #[Route('/at-fork-http', name: 'parallel_at_fork_http')]
+    public function atForkHttp(HttpClientInterface $httpClient, EntityManagerInterface $em): JsonResponse
+    {
+        $start = microtime(true);
+        $runtime = new Runtime();
+
+        // Warm up: parent makes a request so curl handles exist before fork
+        $warmup = $httpClient->request('GET', 'https://httpbin.org/get');
+        $parentStatus = $warmup->getStatusCode();
+
+        // Fork children that each make their own HTTP request
+        $urls = [
+            'https://httpbin.org/get?child=0',
+            'https://httpbin.org/get?child=1',
+            'https://httpbin.org/get?child=2',
+        ];
+
+        $futures = [];
+        foreach ($urls as $i => $url) {
+            $futures["child_$i"] = $runtime->run(static function () use ($httpClient, $em, $url, $i) {
+                // HTTP request from forked child — curl handles were reset by atFork
+                $response = $httpClient->request('GET', $url);
+                $status = $response->getStatusCode();
+                $body = $response->toArray();
+
+                // Also use Doctrine to prove both handlers work together
+                $postCount = \count($em->getRepository(Post::class)->findAll());
+
+                return [
+                    'child' => $i,
+                    'pid' => getmypid(),
+                    'http_status' => $status,
+                    'http_url' => $body['url'] ?? $url,
+                    'post_count' => $postCount,
+                ];
+            });
+        }
+
+        $childResults = [];
+        foreach ($futures as $name => $f) {
+            $childResults[$name] = $f->value();
+        }
+
+        // Parent's HttpClient still works after forks
+        $afterFork = $httpClient->request('GET', 'https://httpbin.org/get?parent=after');
+        $parentAfterStatus = $afterFork->getStatusCode();
+
+        $runtime->close();
+
+        return $this->json([
+            'elapsed_s' => round(microtime(true) - $start, 4),
+            'description' => 'HttpClient in forked children with curl handle reset',
+            'parent_warmup_status' => $parentStatus,
+            'parent_after_fork_status' => $parentAfterStatus,
+            'parent_still_works' => $parentAfterStatus === 200,
+            'children' => $childResults,
         ]);
     }
 

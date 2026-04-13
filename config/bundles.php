@@ -18,4 +18,5 @@ return [
     Symfony\UX\StimulusBundle\StimulusBundle::class => ['all' => true],
     Symfonycasts\SassBundle\SymfonycastsSassBundle::class => ['all' => true],
     Symfony\UX\Icons\UXIconsBundle::class => ['all' => true],
+    Henderkes\ParallelFork\Symfony\ParallelForkBundle::class => ['all' => true],
 ];
