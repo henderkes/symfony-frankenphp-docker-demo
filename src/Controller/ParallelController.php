@@ -786,6 +786,7 @@ class ParallelController extends AbstractController
                 $this->requestCount = 0;
             }
 
+            /** @return array<string, mixed> */
             public function request(string $endpoint): array
             {
                 ++$this->requestCount;
