@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "8fef45145305b2c28c42324369bd2fff",
+    "content-hash": "3c9346fec5d24bdaaaae04ca561de743",
     "packages": [
         {
             "name": "composer/semver",
@@ -1344,12 +1344,12 @@
             "source": {
                 "type": "git",
                 "url": "https://github.com/henderkes/ParallelFork.git",
-                "reference": "fe6519547331b7cf73c2889621994b6aa3e68b95"
+                "reference": "aed3511a952b699bd310128c12b42c1bb94a921b"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/henderkes/ParallelFork/zipball/fe6519547331b7cf73c2889621994b6aa3e68b95",
-                "reference": "fe6519547331b7cf73c2889621994b6aa3e68b95",
+                "url": "https://api.github.com/repos/henderkes/ParallelFork/zipball/aed3511a952b699bd310128c12b42c1bb94a921b",
+                "reference": "aed3511a952b699bd310128c12b42c1bb94a921b",
                 "shasum": ""
             },
             "require": {
@@ -1408,7 +1408,7 @@
                 "source": "https://github.com/henderkes/ParallelFork/tree/master",
                 "issues": "https://github.com/henderkes/ParallelFork/issues"
             },
-            "time": "2026-04-14T15:37:07+00:00"
+            "time": "2026-04-14T15:52:29+00:00"
         },
         {
             "name": "league/commonmark",
@@ -12058,7 +12058,7 @@
     "prefer-stable": true,
     "prefer-lowest": false,
     "platform": {
-        "php": ">=8.4",
+        "php": ">=8.5",
         "ext-ctype": "*",
         "ext-iconv": "*",
         "ext-pcntl": "*",
@@ -12068,7 +12068,7 @@
     },
     "platform-dev": {},
     "platform-overrides": {
-        "php": "8.4.0"
+        "php": "8.5.0"
     },
     "plugin-api-version": "2.9.0"
 }
