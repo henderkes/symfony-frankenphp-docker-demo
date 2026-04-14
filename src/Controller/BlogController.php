@@ -21,7 +21,6 @@ use App\Repository\PostRepository;
 use App\Repository\TagRepository;
 use App\Service\PageRenderer;
 use Doctrine\ORM\EntityManagerInterface;
-use parallel\Runtime;
 use Symfony\Bridge\Doctrine\Attribute\MapEntity;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\EventDispatcher\EventDispatcherInterface;
@@ -32,8 +31,7 @@ use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\Routing\Requirement\Requirement;
 use Symfony\Component\Security\Http\Attribute\CurrentUser;
 use Symfony\Component\Security\Http\Attribute\IsGranted;
-
-use function Henderkes\ParallelFork\run;
+use Henderkes\ParallelFork\Runtime;
 
 /**
  * Controller used to manage blog contents in the public part of the site.
@@ -75,8 +73,7 @@ final class BlogController extends AbstractController
 
     #[Route('/all', name: 'blog_all', defaults: ['num' => '0'], methods: ['GET'])]
     #[Route('/all/{num}', name: 'blog_all_fork', requirements: ['num' => '\d+'], methods: ['GET'])]
-    #[Cache(smaxage: 10)]
-    public function all(Request $request, int $num, PostRepository $posts, TagRepository $tags, PageRenderer $renderer): Response
+    public function all(Request $request, int $num, PostRepository $posts, TagRepository $tags, PageRenderer $renderer, Runtime $runtime): Response
     {
         $start = microtime(true);
 
@@ -101,8 +98,7 @@ final class BlogController extends AbstractController
         // Fork child processes for chunks 1..n, main thread handles chunk 0
         $futures = [];
         for ($i = 1; $i <= $numWorkers && $i < \count($chunks); ++$i) {
-            // bundle automatically registers an atFork() handler that resets Doctrine
-            $futures[] = run($renderChunk, [$chunks[$i]]);
+            $futures[] = $runtime->run($renderChunk, [$chunks[$i]]);
         }
 
         $pages = $renderChunk($chunks[0]);
@@ -165,7 +161,7 @@ final class BlogController extends AbstractController
 
         $futures = [];
         for ($i = 1; $i <= $numWorkers && $i < \count($chunks); ++$i) {
-            $runtime = new Runtime($bootstrapPath);
+            $runtime = new \parallel\Runtime($bootstrapPath);
             $futures[] = $runtime->run($threadRenderChunk, [$chunks[$i], $tagName, $activeTag]);
         }
 

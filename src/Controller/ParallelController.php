@@ -15,18 +15,12 @@ use App\Entity\Post;
 use App\Entity\Tag;
 use App\Entity\User;
 use Doctrine\ORM\EntityManagerInterface;
-use Henderkes\ParallelFork\Channel;
-use Henderkes\ParallelFork\Events;
 use Henderkes\ParallelFork\Handlers;
 use Henderkes\ParallelFork\Runtime;
-use Henderkes\ParallelFork\Sync;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
-
-use function Henderkes\ParallelFork\count as cpuCount;
-use function Henderkes\ParallelFork\run;
 
 #[Route('/parallel')]
 class ParallelController extends AbstractController
@@ -37,16 +31,19 @@ class ParallelController extends AbstractController
         $start = microtime(true);
         $tagsBefore = \count($em->getRepository(Tag::class)->findAll());
 
-        // 1. Parallel DB READS — atFork handler (registered by ForkResetSubscriber)
-        //    reconnects the Doctrine connection in each child process
-        $fPosts = run(static function () use ($em) {
+        $runtime = new Runtime();
+        $runtime->before(name: 'doctrine', child: Handlers::doctrine($em));
+
+        // 1. Parallel DB READS — before(child:) handler reconnects the Doctrine
+        //    connection in each child process
+        $fPosts = $runtime->run(static function () use ($em) {
             return array_map(
                 static fn ($p) => ['id' => $p->getId(), 'title' => $p->getTitle()],
                 $em->getRepository(Post::class)->findAll()
             );
         });
 
-        $fUsers = run(static function () use ($em) {
+        $fUsers = $runtime->run(static function () use ($em) {
             return array_map(
                 static fn ($u) => ['id' => $u->getId(), 'username' => $u->getUsername()],
                 $em->getRepository(User::class)->findAll()
@@ -56,7 +53,7 @@ class ParallelController extends AbstractController
         // 2. Parallel LAZY LOADING — access relations from forked children
         //    Post->getAuthor() is ManyToOne (lazy), Post->getComments() is OneToMany,
         //    Post->getTags() is ManyToMany. All trigger separate DB queries.
-        $fLazy = run(static function () use ($em) {
+        $fLazy = $runtime->run(static function () use ($em) {
             $post = $em->getRepository(Post::class)->find(1);
             if (!$post) {
                 return ['error' => 'post not found'];
@@ -77,7 +74,7 @@ class ParallelController extends AbstractController
         });
 
         // 3. Parallel DB WRITE — insert a new tag from a forked child
-        $fWrite = run(static function () use ($em) {
+        $fWrite = $runtime->run(static function () use ($em) {
             $tag = new Tag('parallel-'.getmypid().'-'.time());
             $em->persist($tag);
             $em->flush();
@@ -86,7 +83,7 @@ class ParallelController extends AbstractController
         });
 
         // 3. Parallel FILE WRITE
-        $fFile = run(static function () {
+        $fFile = $runtime->run(static function () {
             $path = '/tmp/frankenphp_parallel_file_test.txt';
             $content = 'Written by child pid='.getmypid().' at '.date('c');
             file_put_contents($path, $content);
@@ -95,7 +92,7 @@ class ParallelController extends AbstractController
         });
 
         // 4. Parallel CPU work
-        $fFib = run(static function () {
+        $fFib = $runtime->run(static function () {
             $fib = static function (int $n) use (&$fib): int {
                 return $n <= 1 ? $n : $fib($n - 1) + $fib($n - 2);
             };
@@ -117,6 +114,8 @@ class ParallelController extends AbstractController
 
         // Verify: parent can read the child's file
         $fileContent = file_get_contents('/tmp/frankenphp_parallel_file_test.txt');
+
+        $runtime->close();
 
         return $this->json([
             'elapsed_s' => round(microtime(true) - $start, 4),
@@ -143,298 +142,7 @@ class ParallelController extends AbstractController
     }
 
     /**
-     * Channels: parent sends work items, children process and return results.
-     * Each worker gets its own command/result channel pair (anonymous, CoW-inherited).
-     */
-    #[Route('/channels', name: 'parallel_channels')]
-    public function channels(): JsonResponse
-    {
-        $start = microtime(true);
-        $runtime = new Runtime();
-
-        $inputs = ['hello', 'world', 'parallel'];
-        $futures = [];
-        $resultChannels = [];
-
-        // Each worker gets its own channel pair
-        foreach ($inputs as $i => $input) {
-            $cmd = new Channel();
-            $res = new Channel();
-            $resultChannels[$i] = $res;
-
-            $futures[$i] = $runtime->run(static function () use ($cmd, $res) {
-                $task = $cmd->recv();
-                $res->send([
-                    'pid' => getmypid(),
-                    'input' => $task,
-                    'result' => strtoupper($task),
-                ]);
-
-                return true;
-            });
-
-            $cmd->send($input);
-        }
-
-        // Collect results
-        $collected = [];
-        foreach ($resultChannels as $res) {
-            $collected[] = $res->recv();
-            $res->close();
-        }
-
-        foreach ($futures as $f) {
-            $f->value();
-        }
-
-        $runtime->close();
-
-        return $this->json([
-            'elapsed_s' => round(microtime(true) - $start, 4),
-            'description' => 'Named channels: parent dispatches work, children process it',
-            'results' => $collected,
-        ]);
-    }
-
-    /**
-     * Anonymous channels: bidirectional parent/child communication via CoW-inherited channels.
-     */
-    #[Route('/channels-anon', name: 'parallel_channels_anon')]
-    public function channelsAnonymous(): JsonResponse
-    {
-        $start = microtime(true);
-        $runtime = new Runtime();
-
-        $ch = new Channel();
-
-        // Child sends a sequence of messages, then a sentinel
-        $future = $runtime->run(static function () use ($ch) {
-            $primes = [2, 3, 5, 7, 11, 13, 17, 19, 23, 29];
-            foreach ($primes as $p) {
-                $ch->send(['prime' => $p, 'squared' => $p * $p, 'pid' => getmypid()]);
-            }
-            $ch->send('DONE');
-
-            return \count($primes);
-        });
-
-        // Parent receives until sentinel
-        $received = [];
-        while (true) {
-            $msg = $ch->recv();
-            if ('DONE' === $msg) {
-                break;
-            }
-            $received[] = $msg;
-        }
-
-        $childCount = $future->value();
-        $ch->close();
-        $runtime->close();
-
-        return $this->json([
-            'elapsed_s' => round(microtime(true) - $start, 4),
-            'description' => 'Anonymous channel: child streams prime squares to parent',
-            'child_sent' => $childCount,
-            'parent_received' => \count($received),
-            'data' => $received,
-        ]);
-    }
-
-    /**
-     * Events: poll multiple futures as they complete (out-of-order collection).
-     */
-    #[Route('/events', name: 'parallel_events')]
-    public function events(): JsonResponse
-    {
-        $start = microtime(true);
-        $runtime = new Runtime();
-        $events = new Events();
-
-        $tasks = [
-            'slow' => 200_000,  // 200ms
-            'medium' => 100_000,  // 100ms
-            'fast' => 10_000,   // 10ms
-            'instant' => 0,
-        ];
-
-        foreach ($tasks as $name => $sleepUs) {
-            $future = $runtime->run(static function (int $sleep, string $label) {
-                usleep($sleep);
-
-                return ['task' => $label, 'pid' => getmypid(), 'slept_us' => $sleep];
-            }, [$sleepUs, $name]);
-            $events->addFuture($name, $future);
-        }
-
-        // Collect in completion order
-        $completionOrder = [];
-        foreach ($events as $event) {
-            $completionOrder[] = [
-                'name' => $event->source,
-                'type' => $event->type,
-                'value' => $event->value,
-                'elapsed_ms' => round((microtime(true) - $start) * 1000, 1),
-            ];
-        }
-
-        $runtime->close();
-
-        return $this->json([
-            'elapsed_s' => round(microtime(true) - $start, 4),
-            'description' => 'Events polling: tasks collected in completion order, not submission order',
-            'submission_order' => array_keys($tasks),
-            'completion_order' => array_column($completionOrder, 'name'),
-            'events' => $completionOrder,
-        ]);
-    }
-
-    /**
-     * Events with error handling: demonstrates polling futures that may succeed or fail.
-     */
-    #[Route('/events-mixed', name: 'parallel_events_mixed')]
-    public function eventsMixed(): JsonResponse
-    {
-        $start = microtime(true);
-        $runtime = new Runtime();
-        $events = new Events();
-
-        // Mix of succeeding and failing tasks
-        $f1 = $runtime->run(static function () {
-            return ['status' => 'ok', 'value' => 'task1 done', 'pid' => getmypid()];
-        });
-        $events->addFuture('success_1', $f1);
-
-        $f2 = $runtime->run(static function () {
-            usleep(50_000);
-            throw new \RuntimeException('task2 intentional failure');
-        });
-        $events->addFuture('will_fail', $f2);
-
-        $f3 = $runtime->run(static function () {
-            usleep(20_000);
-
-            return ['status' => 'ok', 'value' => 'task3 done', 'pid' => getmypid()];
-        });
-        $events->addFuture('success_2', $f3);
-
-        $f4 = $runtime->run(static function () {
-            usleep(10_000);
-
-            return ['status' => 'ok', 'value' => 'task4 done', 'pid' => getmypid()];
-        });
-        // Cancel this one before it completes
-        $events->addFuture('will_cancel', $f4);
-
-        $collected = [];
-        foreach ($events as $event) {
-            $collected[] = [
-                'source' => $event->source,
-                'type' => $event->type,
-                'value' => $event->value,
-                'elapsed_ms' => round((microtime(true) - $start) * 1000, 1),
-            ];
-        }
-
-        $runtime->close();
-
-        return $this->json([
-            'elapsed_s' => round(microtime(true) - $start, 4),
-            'description' => 'Events: polling a mix of succeeding and failing futures',
-            'events' => $collected,
-        ]);
-    }
-
-    /**
-     * Sync: shared memory counter incremented by multiple children atomically.
-     */
-    #[Route('/sync', name: 'parallel_sync')]
-    public function sync(): JsonResponse
-    {
-        $start = microtime(true);
-        $runtime = new Runtime();
-        $counter = new Sync(0);
-        $workerCount = 4;
-        $incrementsPerWorker = 100;
-
-        $futures = [];
-        for ($i = 0; $i < $workerCount; ++$i) {
-            $futures["worker_$i"] = $runtime->run(
-                static function (int $increments) use ($counter) {
-                    $local = 0;
-                    for ($j = 0; $j < $increments; ++$j) {
-                        $counter(static function () use ($counter) {
-                            $counter->set($counter->get() + 1);
-                        });
-                        ++$local;
-                    }
-
-                    return ['pid' => getmypid(), 'incremented' => $local];
-                },
-                [$incrementsPerWorker]
-            );
-        }
-
-        $workerResults = [];
-        foreach ($futures as $name => $f) {
-            $workerResults[$name] = $f->value();
-        }
-
-        $finalCount = $counter->get();
-        $expected = $workerCount * $incrementsPerWorker;
-        $runtime->close();
-
-        return $this->json([
-            'elapsed_s' => round(microtime(true) - $start, 4),
-            'description' => "$workerCount workers each increment a shared counter $incrementsPerWorker times with mutex",
-            'expected' => $expected,
-            'actual' => $finalCount,
-            'correct' => $finalCount === $expected,
-            'workers' => $workerResults,
-        ]);
-    }
-
-    /**
-     * Sync wait/notify: producer-consumer pattern with shared memory signalling.
-     */
-    #[Route('/sync-notify', name: 'parallel_sync_notify')]
-    public function syncNotify(): JsonResponse
-    {
-        $start = microtime(true);
-        $runtime = new Runtime();
-        $signal = new Sync(0);
-
-        // Child waits for parent's signal before proceeding
-        $future = $runtime->run(static function () use ($signal) {
-            $before = microtime(true);
-            $signal->wait();
-            $waited_ms = round((microtime(true) - $before) * 1000, 1);
-            $value = $signal->get();
-
-            return [
-                'pid' => getmypid(),
-                'received_value' => $value,
-                'waited_ms' => $waited_ms,
-            ];
-        });
-
-        // Parent does some work, then signals the child
-        usleep(50_000); // 50ms delay
-        $signal->set(42);
-        $signal->notify();
-
-        $result = $future->value();
-        $runtime->close();
-
-        return $this->json([
-            'elapsed_s' => round(microtime(true) - $start, 4),
-            'description' => 'Sync wait/notify: child blocks until parent signals with a value',
-            'child_result' => $result,
-        ]);
-    }
-
-    /**
-     * Runtime: explicit lifecycle management, multiple runtimes, atFork hooks.
+     * Runtime: explicit lifecycle management, multiple runtimes, before(child:) hooks.
      */
     #[Route('/runtime', name: 'parallel_runtime')]
     public function runtimeTest(EntityManagerInterface $em): JsonResponse
@@ -442,13 +150,19 @@ class ParallelController extends AbstractController
         $start = microtime(true);
 
         $hookFile = tempnam('/tmp', 'parallel_hook_');
-        Runtime::atFork(static function () use ($hookFile) {
-            file_put_contents($hookFile, 'atFork ran in pid='.getmypid());
-        });
 
         // Two independent runtimes running concurrently
         $rt1 = new Runtime();
+        $rt1->before(name: 'doctrine', child: Handlers::doctrine($em));
+        $rt1->before(name: 'hook-file', child: static function () use ($hookFile) {
+            file_put_contents($hookFile, 'before ran in pid='.getmypid());
+        });
+
         $rt2 = new Runtime();
+        $rt2->before(name: 'doctrine', child: Handlers::doctrine($em));
+        $rt2->before(name: 'hook-file', child: static function () use ($hookFile) {
+            file_put_contents($hookFile, 'before ran in pid='.getmypid());
+        });
 
         $f1 = $rt1->run(static function () use ($em) {
             $count = \count($em->getRepository(Post::class)->findAll());
@@ -481,7 +195,7 @@ class ParallelController extends AbstractController
 
         return $this->json([
             'elapsed_s' => round(microtime(true) - $start, 4),
-            'description' => 'Explicit Runtime lifecycle: two runtimes, atFork hook, multiple tasks per runtime',
+            'description' => 'Explicit Runtime lifecycle: two runtimes, before(child:) hook, multiple tasks per runtime',
             'parent_pid' => getmypid(),
             'results' => $results,
             'at_fork_hook' => $hookContent,
@@ -555,13 +269,13 @@ class ParallelController extends AbstractController
     }
 
     /**
-     * Fan-out/fan-in: parallel map over a dataset using cpuCount() for CPU detection.
+     * Fan-out/fan-in: parallel map over a dataset using CPU detection.
      */
     #[Route('/fan-out', name: 'parallel_fan_out')]
     public function fanOut(): JsonResponse
     {
         $start = microtime(true);
-        $numCpus = cpuCount();
+        $numCpus = (int) shell_exec('nproc 2>/dev/null') ?: 4;
 
         $data = range(1, 120);
         $chunks = array_chunk($data, (int) ceil(\count($data) / $numCpus));
@@ -608,109 +322,22 @@ class ParallelController extends AbstractController
     }
 
     /**
-     * Pipeline: chain of stages connected by channels, each stage in its own fork.
-     */
-    #[Route('/pipeline', name: 'parallel_pipeline')]
-    public function pipeline(EntityManagerInterface $em): JsonResponse
-    {
-        $start = microtime(true);
-        $runtime = new Runtime();
-
-        // Stage 1 -> Stage 2 -> Stage 3, connected by channels
-        $pipe1 = new Channel(); // stage1 -> stage2
-        $pipe2 = new Channel(); // stage2 -> stage3
-        $pipe3 = new Channel(); // stage3 -> parent
-
-        // Stage 1: fetch posts from DB, send titles downstream
-        $f1 = $runtime->run(static function () use ($em, $pipe1) {
-            $posts = $em->getRepository(Post::class)->findBy([], ['id' => 'ASC'], 5);
-            foreach ($posts as $post) {
-                $pipe1->send(['id' => $post->getId(), 'title' => $post->getTitle()]);
-            }
-            $pipe1->send('END');
-
-            return 'stage1: sent '.\count($posts).' posts';
-        });
-
-        // Stage 2: transform titles
-        $f2 = $runtime->run(static function () use ($pipe1, $pipe2) {
-            while (true) {
-                $msg = $pipe1->recv();
-                if ('END' === $msg) {
-                    $pipe2->send('END');
-                    break;
-                }
-                $msg['title_upper'] = strtoupper($msg['title']);
-                $msg['word_count'] = str_word_count($msg['title']);
-                $msg['stage2_pid'] = getmypid();
-                $pipe2->send($msg);
-            }
-
-            return 'stage2: transform complete';
-        });
-
-        // Stage 3: enrich with character analysis
-        $f3 = $runtime->run(static function () use ($pipe2, $pipe3) {
-            while (true) {
-                $msg = $pipe2->recv();
-                if ('END' === $msg) {
-                    $pipe3->send('END');
-                    break;
-                }
-                $msg['char_count'] = \strlen($msg['title']);
-                $msg['vowel_count'] = preg_match_all('/[aeiou]/i', $msg['title']);
-                $msg['stage3_pid'] = getmypid();
-                $pipe3->send($msg);
-            }
-
-            return 'stage3: enrich complete';
-        });
-
-        // Parent collects final results
-        $pipelineResults = [];
-        while (true) {
-            $msg = $pipe3->recv();
-            if ('END' === $msg) {
-                break;
-            }
-            $pipelineResults[] = $msg;
-        }
-
-        $stageReports = [
-            'stage1' => $f1->value(),
-            'stage2' => $f2->value(),
-            'stage3' => $f3->value(),
-        ];
-
-        $pipe1->close();
-        $pipe2->close();
-        $pipe3->close();
-        $runtime->close();
-
-        return $this->json([
-            'elapsed_s' => round(microtime(true) - $start, 4),
-            'description' => 'Pipeline: 3 stages connected by channels (DB fetch -> transform -> enrich)',
-            'stage_reports' => $stageReports,
-            'pipeline_output' => $pipelineResults,
-        ]);
-    }
-
-    /**
-     * Test that atFork handlers from the framework (ForkResetSubscriber) properly
-     * reset the Doctrine connection, allowing children to query independently.
+     * Test that before(child:) handlers properly reset the Doctrine connection,
+     * allowing children to query independently.
      */
     #[Route('/at-fork', name: 'parallel_at_fork')]
     public function atFork(EntityManagerInterface $em): JsonResponse
     {
         $start = microtime(true);
         $runtime = new Runtime();
+        $runtime->before(name: 'doctrine', child: Handlers::doctrine($em));
 
         // Warm up the parent connection
         $parentPosts = $em->getRepository(Post::class)->findAll();
         $parentPostCount = \count($parentPosts);
 
-        // Fork multiple children that all use the same EM — the framework's
-        // atFork handler (ForkResetSubscriber) reconnects Doctrine in each child
+        // Fork multiple children that all use the same EM — the before(child:)
+        // handler reconnects Doctrine in each child
         $futures = [];
         for ($i = 0; $i < 4; ++$i) {
             $futures["child_$i"] = $runtime->run(static function () use ($em, $i) {
@@ -747,7 +374,7 @@ class ParallelController extends AbstractController
 
         return $this->json([
             'elapsed_s' => round(microtime(true) - $start, 4),
-            'description' => 'atFork handlers: framework-registered Doctrine reset in forked children',
+            'description' => 'before(child:) handlers: Doctrine reset in forked children',
             'parent_pid' => getmypid(),
             'parent_post_count_before' => $parentPostCount,
             'parent_post_count_after' => $parentPostsAfter,
@@ -758,17 +385,18 @@ class ParallelController extends AbstractController
     }
 
     /**
-     * Test user-registered atFork handler for a non-autowired singleton.
+     * Test user-registered before(child:) handler for a non-autowired singleton.
      *
      * Demonstrates: an object that is NOT a Symfony service (not in the container,
      * not autowired) but holds state that must be reset after fork. The user
-     * registers their own Runtime::atFork() handler to deal with it.
+     * registers their own before(child:) handler to deal with it.
      */
     #[Route('/at-fork-custom', name: 'parallel_at_fork_custom')]
     public function atForkCustom(EntityManagerInterface $em): JsonResponse
     {
         $start = microtime(true);
         $runtime = new Runtime();
+        $runtime->before(name: 'doctrine', child: Handlers::doctrine($em));
 
         // A non-autowired object that simulates a connection pool or external client.
         $apiClient = new class {
@@ -807,20 +435,20 @@ class ParallelController extends AbstractController
 
         $parentConnectionId = $apiClient->getConnectionId();
 
-        // User registers a named atFork handler for this non-autowired object
-        Runtime::atFork('api-client', static function () use ($apiClient) {
+        // User registers a named before(child:) handler for this non-autowired object
+        $runtime->before(name: 'api-client', child: static function () use ($apiClient) {
             $apiClient->reset();
         });
 
-        // Each child should get a fresh connection after the atFork handler runs
+        // Each child should get a fresh connection after the before(child:) handler runs
         $futures = [];
         for ($i = 0; $i < 3; ++$i) {
             $futures["worker_$i"] = $runtime->run(static function () use ($apiClient, $em, $i) {
-                // Use the custom client — should have been reset by atFork
+                // Use the custom client — should have been reset by before(child:)
                 $r1 = $apiClient->request("/api/items/$i");
                 $r2 = $apiClient->request("/api/details/$i");
 
-                // Also use Doctrine — reset by the framework's atFork handler
+                // Also use Doctrine — reset by the doctrine before(child:) handler
                 $postCount = \count($em->getRepository(Post::class)->findAll());
 
                 return [
@@ -849,7 +477,7 @@ class ParallelController extends AbstractController
 
         return $this->json([
             'elapsed_s' => round(microtime(true) - $start, 4),
-            'description' => 'Named atFork handler for non-autowired singleton',
+            'description' => 'Named before(child:) handler for non-autowired singleton',
             'parent_connection_id' => $parentConnectionId,
             'parent_connection_unchanged' => $apiClient->getConnectionId() === $parentConnectionId,
             'child_connection_ids_unique' => $allUnique,
@@ -859,7 +487,7 @@ class ParallelController extends AbstractController
     }
 
     /**
-     * Test multiple atFork handlers working together: framework handler (Doctrine)
+     * Test multiple before(child:) handlers working together: doctrine handler
      * plus user handler (custom client), verifying execution order and independence.
      */
     #[Route('/at-fork-multi', name: 'parallel_at_fork_multi')]
@@ -867,6 +495,7 @@ class ParallelController extends AbstractController
     {
         $start = microtime(true);
         $runtime = new Runtime();
+        $runtime->before(name: 'doctrine', child: Handlers::doctrine($em));
 
         // Track handler execution order via a temp file
         $orderFile = tempnam('/tmp', 'atfork_order_');
@@ -904,7 +533,7 @@ class ParallelController extends AbstractController
         $parentCacheCount = $cache->count();
 
         // User registers a named handler for cache reset + order tracking
-        Runtime::atFork('app-cache', static function () use ($cache, $orderFile) {
+        $runtime->before(name: 'app-cache', child: static function () use ($cache, $orderFile) {
             $cache->clear();
             file_put_contents($orderFile, 'user_handler:'.getmypid());
         });
@@ -913,13 +542,13 @@ class ParallelController extends AbstractController
         $futures = [];
         for ($i = 0; $i < 3; ++$i) {
             $futures["child_$i"] = $runtime->run(static function () use ($em, $cache, $i) {
-                // Cache should be empty after atFork clear
+                // Cache should be empty after before(child:) clear
                 $cacheEmpty = 0 === $cache->count();
 
                 // Populate fresh child cache
                 $cache->set("child:$i", "value-$i");
 
-                // Use Doctrine — connection reset by framework handler
+                // Use Doctrine — connection reset by doctrine handler
                 $posts = $em->getRepository(Post::class)->findBy([], null, 3);
                 $postTitles = array_map(static fn ($p) => $p->getTitle(), $posts);
 
@@ -948,7 +577,7 @@ class ParallelController extends AbstractController
 
         return $this->json([
             'elapsed_s' => round(microtime(true) - $start, 4),
-            'description' => 'Multiple atFork handlers: framework (Doctrine) + user (cache clear)',
+            'description' => 'Multiple before(child:) handlers: doctrine + user (cache clear)',
             'parent_cache_before' => $parentCacheCount,
             'parent_cache_after' => $parentCacheAfter,
             'parent_cache_unchanged' => $parentCacheAfter === $parentCacheCount,
@@ -958,11 +587,10 @@ class ParallelController extends AbstractController
     }
 
     /**
-     * Override a framework-registered handler with a custom one.
+     * Override a handler with a custom one.
      *
-     * The ForkResetSubscriber registers a 'doctrine' handler via
-     * Handlers::doctrine(). Here we override it with a custom handler
-     * that adds logging, then verify it runs instead of the default.
+     * Here we register a 'doctrine' handler that wraps the default
+     * and also logs, then verify it runs.
      */
     #[Route('/at-fork-override', name: 'parallel_at_fork_override')]
     public function atForkOverride(EntityManagerInterface $em): JsonResponse
@@ -971,10 +599,9 @@ class ParallelController extends AbstractController
         $runtime = new Runtime();
         $logFile = tempnam('/tmp', 'atfork_override_');
 
-        // Override the framework's 'doctrine' handler with a custom one
-        // that wraps the default and also logs
+        // Register a custom 'doctrine' handler that wraps the default and also logs
         $defaultHandler = Handlers::doctrine($em);
-        Runtime::atFork('doctrine', static function () use ($defaultHandler, $logFile) {
+        $runtime->before(name: 'doctrine', child: static function () use ($defaultHandler, $logFile) {
             file_put_contents($logFile, 'custom-doctrine-handler:'.getmypid());
             $defaultHandler();
         });
@@ -994,13 +621,13 @@ class ParallelController extends AbstractController
         @unlink($logFile);
 
         // Restore the default handler so other routes aren't affected
-        Runtime::atFork('doctrine', Handlers::doctrine($em));
+        $runtime->before(name: 'doctrine', child: Handlers::doctrine($em));
 
         $runtime->close();
 
         return $this->json([
             'elapsed_s' => round(microtime(true) - $start, 4),
-            'description' => 'Override: replaced framework doctrine handler with custom logging one',
+            'description' => 'Override: replaced default doctrine handler with custom logging one',
             'child_result' => $result,
             'custom_handler_ran' => str_contains($logContent, 'custom-doctrine-handler'),
             'handler_log' => $logContent,
@@ -1015,19 +642,20 @@ class ParallelController extends AbstractController
     {
         $start = microtime(true);
         $runtime = new Runtime();
+        $runtime->before(name: 'doctrine', child: Handlers::doctrine($em));
 
         // Register a named handler then immediately remove it
         $removedFile = tempnam('/tmp', 'atfork_removed_');
         @unlink($removedFile);
-        Runtime::atFork('will-be-removed', static function () use ($removedFile) {
+        $runtime->before(name: 'will-be-removed', child: static function () use ($removedFile) {
             file_put_contents($removedFile, 'should-not-exist');
         });
-        Runtime::removeAtFork('will-be-removed');
+        $runtime->removeBefore('will-be-removed');
 
         // Also register one that stays, to prove removal is targeted
         $keptFile = tempnam('/tmp', 'atfork_kept_');
         @unlink($keptFile);
-        Runtime::atFork('will-be-kept', static function () use ($keptFile) {
+        $runtime->before(name: 'will-be-kept', child: static function () use ($keptFile) {
             file_put_contents($keptFile, 'kept-handler:'.getmypid());
         });
 
@@ -1044,12 +672,12 @@ class ParallelController extends AbstractController
 
         @unlink($removedFile);
         @unlink($keptFile);
-        Runtime::removeAtFork('will-be-kept');
+        $runtime->removeBefore('will-be-kept');
         $runtime->close();
 
         return $this->json([
             'elapsed_s' => round(microtime(true) - $start, 4),
-            'description' => 'removeAtFork: removed handler does not run, kept handler does',
+            'description' => 'removeBefore: removed handler does not run, kept handler does',
             'child_result' => $result,
             'removed_handler_ran' => $removedRan,
             'kept_handler_ran' => str_contains($keptContent, 'kept-handler'),
@@ -1058,7 +686,7 @@ class ParallelController extends AbstractController
     }
 
     /**
-     * HttpClient in forked children. The bundle's atFork handler resets
+     * HttpClient in forked children. The before(child:) handler resets
      * the inherited curl_multi/curl_share handles so each child gets its
      * own connection pool.
      *
@@ -1070,6 +698,8 @@ class ParallelController extends AbstractController
     {
         $start = microtime(true);
         $runtime = new Runtime();
+        $runtime->before(name: 'doctrine', child: Handlers::doctrine($em));
+        $runtime->before(name: 'http-client', child: Handlers::httpClient($httpClient));
 
         // Warm up: parent makes a request so curl handles exist before fork
         $warmup = $httpClient->request('GET', 'https://httpbin.org/get');
@@ -1085,7 +715,7 @@ class ParallelController extends AbstractController
         $futures = [];
         foreach ($urls as $i => $url) {
             $futures["child_$i"] = $runtime->run(static function () use ($httpClient, $em, $url, $i) {
-                // HTTP request from forked child — curl handles were reset by atFork
+                // HTTP request from forked child — curl handles were reset by before(child:)
                 $response = $httpClient->request('GET', $url);
                 $status = $response->getStatusCode();
                 $body = $response->toArray();
@@ -1120,6 +750,58 @@ class ParallelController extends AbstractController
             'parent_warmup_status' => $parentStatus,
             'parent_after_fork_status' => $parentAfterStatus,
             'parent_still_works' => 200 === $parentAfterStatus,
+            'children' => $childResults,
+        ]);
+    }
+
+    /**
+     * Demonstrates a user-registered RuntimeFactory before handler.
+     * StatsClient holds a raw PDO connection; the factory's 'stats-client'
+     * handler calls reconnect() in each child so they don't share the
+     * parent's connection.
+     */
+    #[Route('/stats-fork', name: 'parallel_stats_fork')]
+    public function statsFork(Runtime $runtime, \App\Service\StatsClient $stats): JsonResponse
+    {
+        $parentConnId = $stats->getConnectionId();
+        $parentCount = $stats->getPostCount();
+
+        $futures = [];
+        for ($i = 0; $i < 3; ++$i) {
+            $futures["child_$i"] = $runtime->run(static function () use ($stats, $i) {
+                return [
+                    'child' => $i,
+                    'pid' => getmypid(),
+                    'connection_id' => $stats->getConnectionId(),
+                    'post_count' => $stats->getPostCount(),
+                ];
+            });
+        }
+
+        $childResults = [];
+        $childConnIds = [];
+        foreach ($futures as $name => $f) {
+            $result = $f->value();
+            $childResults[$name] = $result;
+            $childConnIds[] = $result['connection_id'];
+        }
+
+        // Verify each child got its own connection
+        $allUnique = \count(array_unique($childConnIds)) === \count($childConnIds);
+        $noneMatchParent = !\in_array($parentConnId, $childConnIds, true);
+
+        // Parent's connection still works
+        $parentAfterCount = $stats->getPostCount();
+
+        $runtime->close();
+
+        return $this->json([
+            'description' => 'User-registered before handler: StatsClient PDO reconnect',
+            'parent_connection_id' => $parentConnId,
+            'parent_post_count' => $parentCount,
+            'parent_still_works' => $parentAfterCount === $parentCount,
+            'child_connections_unique' => $allUnique,
+            'no_child_matches_parent' => $noneMatchParent,
             'children' => $childResults,
         ]);
     }

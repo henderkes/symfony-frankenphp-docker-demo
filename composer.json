@@ -6,7 +6,7 @@
     "minimum-stability": "stable",
     "prefer-stable": true,
     "require": {
-        "php": ">=8.4",
+        "php": ">=8.5",
         "ext-ctype": "*",
         "ext-iconv": "*",
         "ext-pcntl": "*",
@@ -53,7 +53,6 @@
         "twig/markdown-extra": "^3.3"
     },
     "require-dev": {
-        "brlabrussia/parallel-stub": "^1.1",
         "dama/doctrine-test-bundle": "^8.0.2",
         "doctrine/doctrine-fixtures-bundle": "^4.1",
         "friendsofphp/php-cs-fixer": "^3.92",
@@ -86,7 +85,7 @@
             "symfony/runtime": true
         },
         "platform": {
-            "php": "8.4.0"
+            "php": "8.5.0"
         },
         "preferred-install": {
             "*": "dist"
@@ -129,6 +128,6 @@
     },
     "repositories": [{
         "type": "vcs",
-        "url": "https://github.com/henderkes/parallelfork.git"
+        "url": "https://github.com/henderkes/ParallelFork.git"
     }]
 }
