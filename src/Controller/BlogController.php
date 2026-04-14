@@ -21,6 +21,7 @@ use App\Repository\PostRepository;
 use App\Repository\TagRepository;
 use App\Service\PageRenderer;
 use Doctrine\ORM\EntityManagerInterface;
+use Henderkes\ParallelFork\Runtime;
 use Symfony\Bridge\Doctrine\Attribute\MapEntity;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\EventDispatcher\EventDispatcherInterface;
@@ -31,7 +32,6 @@ use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\Routing\Requirement\Requirement;
 use Symfony\Component\Security\Http\Attribute\CurrentUser;
 use Symfony\Component\Security\Http\Attribute\IsGranted;
-use Henderkes\ParallelFork\Runtime;
 
 /**
  * Controller used to manage blog contents in the public part of the site.
