@@ -21,7 +21,7 @@ use App\Repository\PostRepository;
 use App\Repository\TagRepository;
 use App\Service\PageRenderer;
 use Doctrine\ORM\EntityManagerInterface;
-use Henderkes\ParallelFork\Runtime;
+use Henderkes\Fork\Runtime;
 use Symfony\Bridge\Doctrine\Attribute\MapEntity;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\EventDispatcher\EventDispatcherInterface;

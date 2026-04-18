@@ -11,7 +11,7 @@
 
 namespace App\Service;
 
-use Henderkes\ParallelFork\ForkAwareInterface;
+use Henderkes\Fork\Symfony\ForkAwareInterface;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
 
 /**

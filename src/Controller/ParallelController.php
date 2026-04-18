@@ -15,8 +15,7 @@ use App\Entity\Post;
 use App\Entity\Tag;
 use App\Entity\User;
 use Doctrine\ORM\EntityManagerInterface;
-use Henderkes\ParallelFork\Handlers;
-use Henderkes\ParallelFork\Runtime;
+use Henderkes\Fork\Runtime;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\Routing\Attribute\Route;
@@ -32,7 +31,7 @@ class ParallelController extends AbstractController
         $tagsBefore = \count($em->getRepository(Tag::class)->findAll());
 
         $runtime = new Runtime();
-        $runtime->before(name: 'doctrine', child: Handlers::doctrine($em));
+        $runtime->before(name: 'doctrine', child: self::doctrineReset($em));
 
         // 1. Parallel DB READS — before(child:) handler reconnects the Doctrine
         //    connection in each child process
@@ -153,13 +152,13 @@ class ParallelController extends AbstractController
 
         // Two independent runtimes running concurrently
         $rt1 = new Runtime();
-        $rt1->before(name: 'doctrine', child: Handlers::doctrine($em));
+        $rt1->before(name: 'doctrine', child: self::doctrineReset($em));
         $rt1->before(name: 'hook-file', child: static function () use ($hookFile) {
             file_put_contents($hookFile, 'before ran in pid='.getmypid());
         });
 
         $rt2 = new Runtime();
-        $rt2->before(name: 'doctrine', child: Handlers::doctrine($em));
+        $rt2->before(name: 'doctrine', child: self::doctrineReset($em));
         $rt2->before(name: 'hook-file', child: static function () use ($hookFile) {
             file_put_contents($hookFile, 'before ran in pid='.getmypid());
         });
@@ -330,7 +329,7 @@ class ParallelController extends AbstractController
     {
         $start = microtime(true);
         $runtime = new Runtime();
-        $runtime->before(name: 'doctrine', child: Handlers::doctrine($em));
+        $runtime->before(name: 'doctrine', child: self::doctrineReset($em));
 
         // Warm up the parent connection
         $parentPosts = $em->getRepository(Post::class)->findAll();
@@ -396,7 +395,7 @@ class ParallelController extends AbstractController
     {
         $start = microtime(true);
         $runtime = new Runtime();
-        $runtime->before(name: 'doctrine', child: Handlers::doctrine($em));
+        $runtime->before(name: 'doctrine', child: self::doctrineReset($em));
 
         // A non-autowired object that simulates a connection pool or external client.
         $apiClient = new class {
@@ -495,7 +494,7 @@ class ParallelController extends AbstractController
     {
         $start = microtime(true);
         $runtime = new Runtime();
-        $runtime->before(name: 'doctrine', child: Handlers::doctrine($em));
+        $runtime->before(name: 'doctrine', child: self::doctrineReset($em));
 
         // Track handler execution order via a temp file
         $orderFile = tempnam('/tmp', 'atfork_order_');
@@ -600,7 +599,7 @@ class ParallelController extends AbstractController
         $logFile = tempnam('/tmp', 'atfork_override_');
 
         // Register a custom 'doctrine' handler that wraps the default and also logs
-        $defaultHandler = Handlers::doctrine($em);
+        $defaultHandler = self::doctrineReset($em);
         $runtime->before(name: 'doctrine', child: static function () use ($defaultHandler, $logFile) {
             file_put_contents($logFile, 'custom-doctrine-handler:'.getmypid());
             $defaultHandler();
@@ -621,7 +620,7 @@ class ParallelController extends AbstractController
         @unlink($logFile);
 
         // Restore the default handler so other routes aren't affected
-        $runtime->before(name: 'doctrine', child: Handlers::doctrine($em));
+        $runtime->before(name: 'doctrine', child: self::doctrineReset($em));
 
         $runtime->close();
 
@@ -642,7 +641,7 @@ class ParallelController extends AbstractController
     {
         $start = microtime(true);
         $runtime = new Runtime();
-        $runtime->before(name: 'doctrine', child: Handlers::doctrine($em));
+        $runtime->before(name: 'doctrine', child: self::doctrineReset($em));
 
         // Register a named handler then immediately remove it
         $removedFile = tempnam('/tmp', 'atfork_removed_');
@@ -698,8 +697,8 @@ class ParallelController extends AbstractController
     {
         $start = microtime(true);
         $runtime = new Runtime();
-        $runtime->before(name: 'doctrine', child: Handlers::doctrine($em));
-        $runtime->before(name: 'http-client', child: Handlers::httpClient($httpClient));
+        $runtime->before(name: 'doctrine', child: self::doctrineReset($em));
+        $runtime->before(name: 'http-client', child: self::httpClientReset($httpClient));
 
         // Warm up: parent makes a request so curl handles exist before fork
         $warmup = $httpClient->request('GET', 'https://httpbin.org/get');
@@ -804,6 +803,93 @@ class ParallelController extends AbstractController
             'no_child_matches_parent' => $noneMatchParent,
             'children' => $childResults,
         ]);
+    }
+
+    /**
+     * Demo helper: returns a before(child:) closure that null-outs the
+     * Doctrine connection handle in the child so the next query
+     * reconnects lazily. This is the kind of hook a real app would
+     * typically consume via the Symfony ForkBundle's auto-wiring — we
+     * do it by hand here to exercise Runtime::before() directly.
+     */
+    private static function doctrineReset(EntityManagerInterface $em): \Closure
+    {
+        /** @var list<object> $stash */
+        static $stash = [];
+
+        return static function () use ($em, &$stash): void {
+            if (! Runtime::inChild()) {
+                return;
+            }
+
+            $conn = $em->getConnection();
+            $ref = new \ReflectionClass($conn);
+
+            $prop = null;
+            foreach (['_conn', 'connection'] as $name) {
+                if ($ref->hasProperty($name)) {
+                    $prop = $ref->getProperty($name);
+                    break;
+                }
+            }
+            if (null === $prop) {
+                return;
+            }
+
+            $old = $prop->getValue($conn);
+            if (\is_object($old)) {
+                $stash[] = $old;
+                $prop->setValue($conn, null);
+            }
+        };
+    }
+
+    /**
+     * Demo helper: resets the curl_multi/curl_share handles on a
+     * Symfony HttpClient so every forked child owns its own pool.
+     */
+    private static function httpClientReset(\Symfony\Contracts\HttpClient\HttpClientInterface $client): \Closure
+    {
+        /** @var list<object> $stash */
+        static $stash = [];
+
+        return static function () use ($client, &$stash): void {
+            if (! Runtime::inChild()) {
+                return;
+            }
+            try {
+                $cursor = $client;
+                for ($d = 0; $d < 10; ++$d) {
+                    $ref = new \ReflectionClass($cursor);
+                    if ($ref->hasProperty('multi')) {
+                        $multi = $ref->getProperty('multi')->getValue($cursor);
+                        if (\is_object($multi)) {
+                            $multiRef = new \ReflectionClass($multi);
+                            foreach (['handle', 'share'] as $f) {
+                                if ($multiRef->hasProperty($f) && isset($multi->$f)) {
+                                    $h = $multi->$f;
+                                    unset($multi->$f);
+                                    if (\is_object($h)) {
+                                        $stash[] = $h;
+                                    }
+                                }
+                            }
+                        }
+
+                        return;
+                    }
+                    if (! $ref->hasProperty('client')) {
+                        return;
+                    }
+                    $inner = $ref->getProperty('client')->getValue($cursor);
+                    if (! \is_object($inner)) {
+                        return;
+                    }
+                    $cursor = $inner;
+                }
+            } catch (\Throwable) {
+            }
+        };
     }
 
     private static function isPrime(int $n): bool

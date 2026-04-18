@@ -17,7 +17,7 @@
         "doctrine/doctrine-bundle": "^3.2.2",
         "doctrine/doctrine-migrations-bundle": "^4.0.0",
         "doctrine/orm": "^3.5",
-        "henderkes/parallel-fork": "dev-master",
+        "henderkes/fork": "dev-main",
         "league/commonmark": "^2.1",
         "symfony/apache-pack": "^1.0",
         "symfony/asset": "^8",
@@ -127,7 +127,10 @@
         }
     },
     "repositories": [{
-        "type": "vcs",
-        "url": "https://github.com/henderkes/ParallelFork.git"
+        "type": "path",
+        "url": "/home/m/fork",
+        "options": {
+            "symlink": true
+        }
     }]
 }
