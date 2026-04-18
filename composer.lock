@@ -1344,12 +1344,12 @@
             "source": {
                 "type": "git",
                 "url": "https://github.com/henderkes/fork.git",
-                "reference": "637196e0509b6fc0859a0ff3975c042d9b8e0b43"
+                "reference": "099b543a4046cb7385023f3db028e90e0e3f807d"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/henderkes/fork/zipball/637196e0509b6fc0859a0ff3975c042d9b8e0b43",
-                "reference": "637196e0509b6fc0859a0ff3975c042d9b8e0b43",
+                "url": "https://api.github.com/repos/henderkes/fork/zipball/099b543a4046cb7385023f3db028e90e0e3f807d",
+                "reference": "099b543a4046cb7385023f3db028e90e0e3f807d",
                 "shasum": ""
             },
             "require": {
@@ -1414,7 +1414,7 @@
                 "source": "https://github.com/henderkes/fork/tree/main",
                 "issues": "https://github.com/henderkes/fork/issues"
             },
-            "time": "2026-04-18T15:48:23+00:00"
+            "time": "2026-04-18T16:27:04+00:00"
         },
         {
             "name": "league/commonmark",
