@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "588326915b409d933e2943c7936442b8",
+    "content-hash": "b5432c7644352cc2c760ca756addd0ab",
     "packages": [
         {
             "name": "composer/semver",
@@ -1341,10 +1341,16 @@
         {
             "name": "henderkes/fork",
             "version": "dev-main",
-            "dist": {
-                "type": "path",
-                "url": "/home/m/fork",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/henderkes/fork.git",
                 "reference": "637196e0509b6fc0859a0ff3975c042d9b8e0b43"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/henderkes/fork/zipball/637196e0509b6fc0859a0ff3975c042d9b8e0b43",
+                "reference": "637196e0509b6fc0859a0ff3975c042d9b8e0b43",
+                "shasum": ""
             },
             "require": {
                 "ext-pcntl": "*",
@@ -1363,6 +1369,7 @@
                 "symfony/framework-bundle": "^7.0 || ^8.0",
                 "symfony/var-exporter": "^7.0 || ^8.0"
             },
+            "default-branch": true,
             "type": "library",
             "extra": {
                 "symfony": {
@@ -1403,10 +1410,11 @@
                 "MIT"
             ],
             "description": "Fork-based parallel execution via pcntl.",
-            "transport-options": {
-                "symlink": true,
-                "relative": false
-            }
+            "support": {
+                "source": "https://github.com/henderkes/fork/tree/main",
+                "issues": "https://github.com/henderkes/fork/issues"
+            },
+            "time": "2026-04-18T15:48:23+00:00"
         },
         {
             "name": "league/commonmark",

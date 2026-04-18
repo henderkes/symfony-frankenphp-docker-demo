@@ -127,10 +127,7 @@
         }
     },
     "repositories": [{
-        "type": "path",
-        "url": "/home/m/fork",
-        "options": {
-            "symlink": true
-        }
+        "type": "vcs",
+        "url": "https://github.com/henderkes/fork.git"
     }]
 }
