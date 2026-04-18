@@ -818,7 +818,7 @@ class ParallelController extends AbstractController
         static $stash = [];
 
         return static function () use ($em, &$stash): void {
-            if (! Runtime::inChild()) {
+            if (!Runtime::inChild()) {
                 return;
             }
 
@@ -848,13 +848,13 @@ class ParallelController extends AbstractController
      * Demo helper: resets the curl_multi/curl_share handles on a
      * Symfony HttpClient so every forked child owns its own pool.
      */
-    private static function httpClientReset(\Symfony\Contracts\HttpClient\HttpClientInterface $client): \Closure
+    private static function httpClientReset(HttpClientInterface $client): \Closure
     {
         /** @var list<object> $stash */
         static $stash = [];
 
         return static function () use ($client, &$stash): void {
-            if (! Runtime::inChild()) {
+            if (!Runtime::inChild()) {
                 return;
             }
             try {
@@ -878,11 +878,11 @@ class ParallelController extends AbstractController
 
                         return;
                     }
-                    if (! $ref->hasProperty('client')) {
+                    if (!$ref->hasProperty('client')) {
                         return;
                     }
                     $inner = $ref->getProperty('client')->getValue($cursor);
-                    if (! \is_object($inner)) {
+                    if (!\is_object($inner)) {
                         return;
                     }
                     $cursor = $inner;
