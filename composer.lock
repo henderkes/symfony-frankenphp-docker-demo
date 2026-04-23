@@ -1344,12 +1344,12 @@
             "source": {
                 "type": "git",
                 "url": "https://github.com/henderkes/fork.git",
-                "reference": "099b543a4046cb7385023f3db028e90e0e3f807d"
+                "reference": "eaabe6dda13fc9aad287ae001d0f7daf0689124b"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/henderkes/fork/zipball/099b543a4046cb7385023f3db028e90e0e3f807d",
-                "reference": "099b543a4046cb7385023f3db028e90e0e3f807d",
+                "url": "https://api.github.com/repos/henderkes/fork/zipball/eaabe6dda13fc9aad287ae001d0f7daf0689124b",
+                "reference": "eaabe6dda13fc9aad287ae001d0f7daf0689124b",
                 "shasum": ""
             },
             "require": {
@@ -1414,7 +1414,7 @@
                 "source": "https://github.com/henderkes/fork/tree/main",
                 "issues": "https://github.com/henderkes/fork/issues"
             },
-            "time": "2026-04-18T16:27:04+00:00"
+            "time": "2026-04-23T15:30:18+00:00"
         },
         {
             "name": "league/commonmark",
@@ -9313,11 +9313,11 @@
         },
         {
             "name": "phpstan/phpstan",
-            "version": "2.1.50",
+            "version": "2.1.51",
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/phpstan/phpstan/zipball/d452086fb4cf648c6b2d8cf3b639351f79e4f3e2",
-                "reference": "d452086fb4cf648c6b2d8cf3b639351f79e4f3e2",
+                "url": "https://api.github.com/repos/phpstan/phpstan/zipball/dc3b523c45e714c70de2ac5113b958223b55dc59",
+                "reference": "dc3b523c45e714c70de2ac5113b958223b55dc59",
                 "shasum": ""
             },
             "require": {
@@ -9362,7 +9362,7 @@
                     "type": "github"
                 }
             ],
-            "time": "2026-04-17T13:10:32+00:00"
+            "time": "2026-04-21T18:22:01+00:00"
         },
         {
             "name": "phpstan/phpstan-doctrine",

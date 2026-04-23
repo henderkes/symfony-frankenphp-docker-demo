@@ -11,6 +11,7 @@
 
 namespace App\Service;
 
+use Henderkes\Fork\Runtime;
 use Henderkes\Fork\Symfony\ForkAwareInterface;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
 
@@ -22,8 +23,6 @@ use Symfony\Component\DependencyInjection\Attribute\Autowire;
 class StatsClient implements ForkAwareInterface
 {
     private ?\PDO $pdo = null;
-    /** @var list<\PDO> Prevents GC from closing inherited fds in child processes @phpstan-ignore property.onlyWritten */
-    private array $abandonedConnections = [];
     private string $pdoDsn;
     private ?string $user;
     private ?string $pass;
@@ -41,16 +40,13 @@ class StatsClient implements ForkAwareInterface
         $this->connect();
     }
 
-    public function atFork(): void
+    public function configure(Runtime $runtime): Runtime
     {
-        // Stash the inherited PDO so PHP's GC doesn't close the underlying
-        // socket (the parent still uses it). This only runs in the child
-        // process, which exits shortly after — no permanent leak.
-        if (null !== $this->pdo) {
-            $this->abandonedConnections[] = $this->pdo;
+        return $runtime->before(child: function (): void {
+            Runtime::abandon($this->pdo);
             $this->pdo = null;
-        }
-        $this->connect();
+            $this->connect();
+        });
     }
 
     public function getConnectionId(): int

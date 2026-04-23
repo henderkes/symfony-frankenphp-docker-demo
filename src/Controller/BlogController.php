@@ -21,6 +21,7 @@ use App\Repository\PostRepository;
 use App\Repository\TagRepository;
 use App\Service\PageRenderer;
 use Doctrine\ORM\EntityManagerInterface;
+use Henderkes\Fork\Future;
 use Henderkes\Fork\Runtime;
 use Symfony\Bridge\Doctrine\Attribute\MapEntity;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -75,7 +76,8 @@ final class BlogController extends AbstractController
     #[Route('/all/{num}', name: 'blog_all_fork', requirements: ['num' => '\d+'], methods: ['GET'])]
     public function all(Request $request, int $num, PostRepository $posts, TagRepository $tags, PageRenderer $renderer, Runtime $runtime): Response
     {
-        $start = microtime(true);
+        $t0 = hrtime(true);
+        $ms = static fn (int|float $t) => round(($t - $t0) / 1e6, 2);
 
         $tag = $request->query->has('tag') ? $tags->findOneBy(['name' => $request->query->get('tag')]) : null;
         $firstPage = $posts->findLatest(1, $tag);
@@ -86,27 +88,68 @@ final class BlogController extends AbstractController
         $allPages = range(1, $firstPage->getLastPage());
         $chunks = array_chunk($allPages, max(1, (int) ceil(\count($allPages) / ($numWorkers + 1))));
 
-        $renderChunk = static function (array $pageNums) use ($renderer, $tagName, $activeTag) {
+        // Closure runs in main (for chunk 0) and in each child (for chunks 1..n).
+        // hrtime() after fork reads the same monotonic clock, so $t0 from the
+        // parent is comparable to hrtime() inside the child.
+        $renderChunk = static function (array $pageNums, int|float $t0) use ($renderer, $tagName, $activeTag): array {
+            $childStart = hrtime(true);
             $result = [];
             foreach ($pageNums as $p) {
                 $result[$p] = $renderer->render($renderer->fetch($p, $tagName), $activeTag);
             }
 
-            return $result;
+            return [
+                'pages' => $result,
+                'start_ms' => round(($childStart - $t0) / 1e6, 2),
+                'end_ms' => round((hrtime(true) - $t0) / 1e6, 2),
+            ];
         };
 
-        // Fork child processes for chunks 1..n, main thread handles chunk 0
+        /** @var array<int, array{pages:int, spawn_ms:float, start_ms?:float, end_ms?:float, reap_start_ms?:float, reap_end_ms?:float}> $timings */
+        $timings = [];
+
+        // Spawn workers for chunks 1..n. Measure per-call spawn latency (time
+        // inside $runtime->run()) so we can see the serial pcntl_fork cost.
         $futures = [];
         for ($i = 1; $i <= $numWorkers && $i < \count($chunks); ++$i) {
-            $futures[] = $runtime->run($renderChunk, [$chunks[$i]]);
+            $tCall = hrtime(true);
+            $futures[$i] = $runtime->run($renderChunk, [$chunks[$i], $t0]);
+            $timings[$i] = [
+                'pages' => \count($chunks[$i]),
+                'spawn_ms' => round((hrtime(true) - $tCall) / 1e6, 3),
+                'spawned_at_ms' => $ms(hrtime(true)),
+            ];
         }
 
-        $pages = $renderChunk($chunks[0]);
+        // Main thread runs chunk 0 in parallel with the workers.
+        $timings[0] = [
+            'pages' => \count($chunks[0]),
+            'spawn_ms' => 0,
+            'spawned_at_ms' => $ms(hrtime(true)),
+        ];
+        $mainRes = $renderChunk($chunks[0], $t0);
+        $timings[0]['start_ms'] = $mainRes['start_ms'];
+        $timings[0]['end_ms'] = $mainRes['end_ms'];
+        $timings[0]['reap_start_ms'] = $mainRes['end_ms'];
+        $timings[0]['reap_end_ms'] = $mainRes['end_ms'];
+        $pages = $mainRes['pages'];
 
-        foreach ($futures as $future) {
-            $pages += $future->value();
+        // Reap workers in arrival order via stream_select — fast children
+        // don't wait behind slow ones. The reap_* values are bulk timings
+        // since await() drains them all in one call.
+        $indices = array_keys($futures);
+        $tReap = hrtime(true);
+        $results = Future::await(...array_values($futures));
+        $tDone = hrtime(true);
+        foreach ($indices as $k => $i) {
+            $res = $results[$k];
+            $timings[$i]['reap_start_ms'] = round(($tReap - $t0) / 1e6, 2);
+            $timings[$i]['reap_end_ms'] = round(($tDone - $t0) / 1e6, 2);
+            $timings[$i]['start_ms'] = $res['start_ms'];
+            $timings[$i]['end_ms'] = $res['end_ms'];
+            $pages += $res['pages'];
         }
-
+        ksort($timings);
         ksort($pages);
 
         return $this->render('blog/index_parallel.html.twig', [
@@ -114,9 +157,10 @@ final class BlogController extends AbstractController
             'currentPage' => 1,
             'totalPages' => $firstPage->getLastPage(),
             'numResults' => $firstPage->getNumResults(),
-            'elapsed_ms' => round((microtime(true) - $start) * 1000, 1),
+            'elapsed_ms' => round((hrtime(true) - $t0) / 1e6, 2),
             'mode' => $num > 0 ? "fork ($num workers)" : 'single',
             'tagName' => $activeTag,
+            'timings' => $timings,
         ]);
     }
 
