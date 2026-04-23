@@ -1,5 +1,8 @@
 {
     metrics
+    frankenphp {
+        num_threads 4
+    }
 }
 
 :2020 {

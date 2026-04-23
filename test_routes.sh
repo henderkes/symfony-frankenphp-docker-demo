@@ -57,7 +57,6 @@ FORK_ROUTES=(
     "/${LOCALE}/parallel/at-fork-custom"
     "/${LOCALE}/parallel/at-fork-multi"
     "/${LOCALE}/parallel/at-fork-override"
-    "/${LOCALE}/parallel/at-fork-remove"
     "/${LOCALE}/parallel/at-fork-http"
     "/${LOCALE}/parallel/stats-fork"
 )

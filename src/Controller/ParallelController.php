@@ -31,7 +31,7 @@ class ParallelController extends AbstractController
         $tagsBefore = \count($em->getRepository(Tag::class)->findAll());
 
         $runtime = new Runtime();
-        $runtime->before(name: 'doctrine', child: self::doctrineReset($em));
+        $runtime->before(child: self::doctrineReset($em));
 
         // 1. Parallel DB READS — before(child:) handler reconnects the Doctrine
         //    connection in each child process
@@ -152,14 +152,14 @@ class ParallelController extends AbstractController
 
         // Two independent runtimes running concurrently
         $rt1 = new Runtime();
-        $rt1->before(name: 'doctrine', child: self::doctrineReset($em));
-        $rt1->before(name: 'hook-file', child: static function () use ($hookFile) {
+        $rt1->before(child: self::doctrineReset($em));
+        $rt1->before(child: static function () use ($hookFile) {
             file_put_contents($hookFile, 'before ran in pid='.getmypid());
         });
 
         $rt2 = new Runtime();
-        $rt2->before(name: 'doctrine', child: self::doctrineReset($em));
-        $rt2->before(name: 'hook-file', child: static function () use ($hookFile) {
+        $rt2->before(child: self::doctrineReset($em));
+        $rt2->before(child: static function () use ($hookFile) {
             file_put_contents($hookFile, 'before ran in pid='.getmypid());
         });
 
@@ -329,7 +329,7 @@ class ParallelController extends AbstractController
     {
         $start = microtime(true);
         $runtime = new Runtime();
-        $runtime->before(name: 'doctrine', child: self::doctrineReset($em));
+        $runtime->before(child: self::doctrineReset($em));
 
         // Warm up the parent connection
         $parentPosts = $em->getRepository(Post::class)->findAll();
@@ -395,7 +395,7 @@ class ParallelController extends AbstractController
     {
         $start = microtime(true);
         $runtime = new Runtime();
-        $runtime->before(name: 'doctrine', child: self::doctrineReset($em));
+        $runtime->before(child: self::doctrineReset($em));
 
         // A non-autowired object that simulates a connection pool or external client.
         $apiClient = new class {
@@ -435,7 +435,7 @@ class ParallelController extends AbstractController
         $parentConnectionId = $apiClient->getConnectionId();
 
         // User registers a named before(child:) handler for this non-autowired object
-        $runtime->before(name: 'api-client', child: static function () use ($apiClient) {
+        $runtime->before(child: static function () use ($apiClient) {
             $apiClient->reset();
         });
 
@@ -494,7 +494,7 @@ class ParallelController extends AbstractController
     {
         $start = microtime(true);
         $runtime = new Runtime();
-        $runtime->before(name: 'doctrine', child: self::doctrineReset($em));
+        $runtime->before(child: self::doctrineReset($em));
 
         // Track handler execution order via a temp file
         $orderFile = tempnam('/tmp', 'atfork_order_');
@@ -532,7 +532,7 @@ class ParallelController extends AbstractController
         $parentCacheCount = $cache->count();
 
         // User registers a named handler for cache reset + order tracking
-        $runtime->before(name: 'app-cache', child: static function () use ($cache, $orderFile) {
+        $runtime->before(child: static function () use ($cache, $orderFile) {
             $cache->clear();
             file_put_contents($orderFile, 'user_handler:'.getmypid());
         });
@@ -600,7 +600,7 @@ class ParallelController extends AbstractController
 
         // Register a custom 'doctrine' handler that wraps the default and also logs
         $defaultHandler = self::doctrineReset($em);
-        $runtime->before(name: 'doctrine', child: static function () use ($defaultHandler, $logFile) {
+        $runtime->before(child: static function () use ($defaultHandler, $logFile) {
             file_put_contents($logFile, 'custom-doctrine-handler:'.getmypid());
             $defaultHandler();
         });
@@ -620,7 +620,7 @@ class ParallelController extends AbstractController
         @unlink($logFile);
 
         // Restore the default handler so other routes aren't affected
-        $runtime->before(name: 'doctrine', child: self::doctrineReset($em));
+        $runtime->before(child: self::doctrineReset($em));
 
         $runtime->close();
 
@@ -630,57 +630,6 @@ class ParallelController extends AbstractController
             'child_result' => $result,
             'custom_handler_ran' => str_contains($logContent, 'custom-doctrine-handler'),
             'handler_log' => $logContent,
-        ]);
-    }
-
-    /**
-     * Remove a named handler entirely and verify it no longer runs.
-     */
-    #[Route('/at-fork-remove', name: 'parallel_at_fork_remove')]
-    public function atForkRemove(EntityManagerInterface $em): JsonResponse
-    {
-        $start = microtime(true);
-        $runtime = new Runtime();
-        $runtime->before(name: 'doctrine', child: self::doctrineReset($em));
-
-        // Register a named handler then immediately remove it
-        $removedFile = tempnam('/tmp', 'atfork_removed_');
-        @unlink($removedFile);
-        $runtime->before(name: 'will-be-removed', child: static function () use ($removedFile) {
-            file_put_contents($removedFile, 'should-not-exist');
-        });
-        $runtime->removeBefore('will-be-removed');
-
-        // Also register one that stays, to prove removal is targeted
-        $keptFile = tempnam('/tmp', 'atfork_kept_');
-        @unlink($keptFile);
-        $runtime->before(name: 'will-be-kept', child: static function () use ($keptFile) {
-            file_put_contents($keptFile, 'kept-handler:'.getmypid());
-        });
-
-        $future = $runtime->run(static function () use ($em) {
-            return [
-                'pid' => getmypid(),
-                'post_count' => \count($em->getRepository(Post::class)->findAll()),
-            ];
-        });
-
-        $result = $future->value();
-        $removedRan = file_exists($removedFile);
-        $keptContent = file_exists($keptFile) ? file_get_contents($keptFile) : 'not written';
-
-        @unlink($removedFile);
-        @unlink($keptFile);
-        $runtime->removeBefore('will-be-kept');
-        $runtime->close();
-
-        return $this->json([
-            'elapsed_s' => round(microtime(true) - $start, 4),
-            'description' => 'removeBefore: removed handler does not run, kept handler does',
-            'child_result' => $result,
-            'removed_handler_ran' => $removedRan,
-            'kept_handler_ran' => str_contains($keptContent, 'kept-handler'),
-            'kept_handler_log' => $keptContent,
         ]);
     }
 
@@ -697,8 +646,8 @@ class ParallelController extends AbstractController
     {
         $start = microtime(true);
         $runtime = new Runtime();
-        $runtime->before(name: 'doctrine', child: self::doctrineReset($em));
-        $runtime->before(name: 'http-client', child: self::httpClientReset($httpClient));
+        $runtime->before(child: self::doctrineReset($em));
+        $runtime->before(child: self::httpClientReset($httpClient));
 
         // Warm up: parent makes a request so curl handles exist before fork
         $warmup = $httpClient->request('GET', 'https://httpbin.org/get');
@@ -814,10 +763,7 @@ class ParallelController extends AbstractController
      */
     private static function doctrineReset(EntityManagerInterface $em): \Closure
     {
-        /** @var list<object> $stash */
-        static $stash = [];
-
-        return static function () use ($em, &$stash): void {
+        return static function () use ($em): void {
             if (!Runtime::inChild()) {
                 return;
             }
@@ -838,7 +784,7 @@ class ParallelController extends AbstractController
 
             $old = $prop->getValue($conn);
             if (\is_object($old)) {
-                $stash[] = $old;
+                Runtime::abandon($old);
                 $prop->setValue($conn, null);
             }
         };
@@ -850,10 +796,7 @@ class ParallelController extends AbstractController
      */
     private static function httpClientReset(HttpClientInterface $client): \Closure
     {
-        /** @var list<object> $stash */
-        static $stash = [];
-
-        return static function () use ($client, &$stash): void {
+        return static function () use ($client): void {
             if (!Runtime::inChild()) {
                 return;
             }
@@ -870,7 +813,7 @@ class ParallelController extends AbstractController
                                     $h = $multi->$f;
                                     unset($multi->$f);
                                     if (\is_object($h)) {
-                                        $stash[] = $h;
+                                        Runtime::abandon($h);
                                     }
                                 }
                             }
@@ -890,6 +833,205 @@ class ParallelController extends AbstractController
             } catch (\Throwable) {
             }
         };
+    }
+
+    /**
+     * Fork-size probe: fork ONE child that parks in a short usleep so the
+     * parent can read /proc/$child/status and report the child's VmSize,
+     * VmRSS, and VMA count. Also reports fork_ms (wall time of the pcntl
+     * fork + handshake). Used to measure DONTFORK reductions.
+     */
+    #[Route('/fork-probe', name: 'parallel_fork_probe')]
+    public function forkProbe(Runtime $runtime): JsonResponse
+    {
+        $pidFile = '/tmp/fork_probe_child.pid';
+        @unlink($pidFile);
+
+        $forkStart = hrtime(true);
+        $future = $runtime->run(static function () use ($pidFile) {
+            \file_put_contents($pidFile, (string) \getmypid());
+            // keep the child alive long enough for the parent to inspect /proc
+            \usleep(400_000);
+
+            return ['pid' => \getmypid()];
+        });
+        $forkMs = round((hrtime(true) - $forkStart) / 1e6, 3);
+
+        // Spin briefly waiting for the child to write its pid
+        $childPid = 0;
+        for ($i = 0; $i < 200; ++$i) {
+            if (\file_exists($pidFile) && ($raw = \file_get_contents($pidFile)) !== '' && ctype_digit(trim($raw))) {
+                $childPid = (int) trim($raw);
+                break;
+            }
+            usleep(1_000);
+        }
+
+        $childStats = ['error' => 'could not read child proc'];
+        if ($childPid > 0 && file_exists("/proc/$childPid/status")) {
+            $status = file_get_contents("/proc/$childPid/status");
+            $maps = @file("/proc/$childPid/maps", FILE_IGNORE_NEW_LINES);
+            $parse = static function (string $key) use ($status): int {
+                return preg_match("/^$key:\\s+(\\d+)\\s+kB/m", $status, $m) ? (int) $m[1] : 0;
+            };
+            $buckets = [];
+            $total = 0;
+            if (\is_array($maps)) {
+                foreach ($maps as $line) {
+                    if (!preg_match('/^([0-9a-f]+)-([0-9a-f]+) (.{4}) \S+ \S+ \S+\s*(.*)$/', $line, $m)) {
+                        continue;
+                    }
+                    $size = hexdec($m[2]) - hexdec($m[1]);
+                    $perms = $m[3];
+                    $path = trim($m[4]);
+                    $kind = match (true) {
+                        $path === '' => "anon $perms",
+                        str_starts_with($path, '[') => "special $path",
+                        default => 'file ' . (str_contains($path, '.so') ? 'shared_lib' : basename($path)),
+                    };
+                    $buckets[$kind] = ($buckets[$kind] ?? ['count' => 0, 'size' => 0]);
+                    ++$buckets[$kind]['count'];
+                    $buckets[$kind]['size'] += $size;
+                    $total += $size;
+                }
+                arsort($buckets);
+            }
+            $top = [];
+            foreach (array_slice($buckets, 0, 10, true) as $k => $v) {
+                $top[$k] = ['count' => $v['count'], 'mb' => round($v['size'] / 1048576, 1)];
+            }
+            $childStats = [
+                'pid' => $childPid,
+                'vm_size_kb' => $parse('VmSize'),
+                'vm_size_mb' => round($parse('VmSize') / 1024, 1),
+                'vm_rss_kb' => $parse('VmRSS'),
+                'vm_rss_mb' => round($parse('VmRSS') / 1024, 1),
+                'vm_data_mb' => round($parse('VmData') / 1024, 1),
+                'vmas' => \is_array($maps) ? \count($maps) : 0,
+                'top_vma_categories' => $top,
+            ];
+        }
+
+        // Parent stats for comparison
+        $parentStatus = file_get_contents('/proc/'.getmypid().'/status');
+        $parentMaps = @file('/proc/'.getmypid().'/maps', FILE_IGNORE_NEW_LINES);
+        $parse = static function (string $key) use ($parentStatus): int {
+            return preg_match("/^$key:\\s+(\\d+)\\s+kB/m", $parentStatus, $m) ? (int) $m[1] : 0;
+        };
+        $parent = [
+            'pid' => getmypid(),
+            'vm_size_mb' => round($parse('VmSize') / 1024, 1),
+            'vm_rss_mb' => round($parse('VmRSS') / 1024, 1),
+            'vmas' => \is_array($parentMaps) ? \count($parentMaps) : 0,
+        ];
+
+        $result = $future->value();
+        @unlink($pidFile);
+
+        return $this->json([
+            'fork_ms' => $forkMs,
+            'child' => $childStats + ['task_pid' => $result['pid'] ?? null],
+            'parent' => $parent,
+            'targets' => ['vm_size_mb' => 500, 'fork_ms' => 25],
+            'passing' => [
+                'vsz' => ($childStats['vm_size_mb'] ?? INF) <= 500,
+                'fork_ms' => $forkMs <= 25,
+            ],
+        ]);
+    }
+
+    /**
+     * Pure CPU bench: count primes up to $limit in parallel across $workers
+     * children. Returns phase timings (fork loop, children wall, merge) so we
+     * can separate fork overhead from actual parallel work.
+     *
+     * Example: /parallel/scale/8/2000000 — 2M primes split across 8 workers.
+     */
+    #[Route('/scale/{workers}/{limit}', name: 'parallel_scale', requirements: ['workers' => '\d+', 'limit' => '\d+'])]
+    public function scale(int $workers, int $limit, Runtime $runtime): JsonResponse
+    {
+        $workers = max(0, min($workers, 64));
+        $limit = max(1000, min($limit, 50_000_000));
+
+        $total = hrtime(true);
+
+        $task = static function (int $lo, int $hi): array {
+            $t = hrtime(true);
+            $c = 0;
+            for ($n = max(2, $lo); $n < $hi; ++$n) {
+                if (self::isPrime($n)) {
+                    ++$c;
+                }
+            }
+
+            return [
+                'pid' => getmypid(),
+                'range' => [$lo, $hi],
+                'count' => $c,
+                'compute_ms' => round((hrtime(true) - $t) / 1e6, 2),
+            ];
+        };
+
+        // Partition [2, $limit) into $workers+1 roughly-equal ranges.
+        $bands = $workers + 1;
+        $size = (int) ceil(($limit - 2) / $bands);
+        $ranges = [];
+        for ($i = 0; $i < $bands; ++$i) {
+            $lo = 2 + $i * $size;
+            $hi = min($lo + $size, $limit);
+            if ($lo < $hi) {
+                $ranges[] = [$lo, $hi];
+            }
+        }
+
+        // Phase 1: fork loop. Last range belongs to main (fewer pcntl calls).
+        $forkStart = hrtime(true);
+        $futures = [];
+        $workerRanges = \array_slice($ranges, 1);
+        foreach ($workerRanges as $range) {
+            $futures[] = $runtime->run($task, $range);
+        }
+        $forkMs = round((hrtime(true) - $forkStart) / 1e6, 2);
+
+        // Phase 2: main renders its chunk while children run.
+        $mainStart = hrtime(true);
+        $mainResult = $ranges ? $task(...$ranges[0]) : ['count' => 0, 'compute_ms' => 0];
+        $mainMs = round((hrtime(true) - $mainStart) / 1e6, 2);
+
+        // Phase 3: reap children and merge.
+        $reapStart = hrtime(true);
+        $childResults = [];
+        foreach ($futures as $f) {
+            $childResults[] = $f->value();
+        }
+        $reapMs = round((hrtime(true) - $reapStart) / 1e6, 2);
+
+        $runtime->close();
+
+        $primesTotal = $mainResult['count'];
+        $childWall = 0.0;
+        foreach ($childResults as $r) {
+            $primesTotal += $r['count'];
+            $childWall = max($childWall, $r['compute_ms']);
+        }
+
+        $totalMs = round((hrtime(true) - $total) / 1e6, 2);
+
+        return $this->json([
+            'limit' => $limit,
+            'workers' => $workers,
+            'chunks' => \count($ranges),
+            'total_primes' => $primesTotal,
+            'phases_ms' => [
+                'fork_loop' => $forkMs,
+                'main_compute' => $mainMs,
+                'reap_and_merge' => $reapMs,
+                'total' => $totalMs,
+            ],
+            'child_max_compute_ms' => $childWall,
+            'main_result' => $mainResult,
+            'child_results' => $childResults,
+        ]);
     }
 
     private static function isPrime(int $n): bool
