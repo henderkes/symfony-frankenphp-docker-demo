@@ -32,12 +32,20 @@ class PageRenderer
      */
     public function fetch(int $pageNum, ?string $tagName): array
     {
+        return $this->fetchChunk([$pageNum], $tagName)[$pageNum] ?? [];
+    }
+
+    /**
+     * Count distinct posts matching the filter (used to derive lastPage
+     * without hydrating the whole result set).
+     *
+     * @return array{0: int, 1: int} [numResults, lastPage]
+     */
+    public function countPages(?string $tagName): array
+    {
         $qb = $this->em->getRepository(Post::class)->createQueryBuilder('p')
-            ->addSelect('a', 't')
-            ->innerJoin('p.author', 'a')
-            ->leftJoin('p.tags', 't')
+            ->select('COUNT(DISTINCT p.id)')
             ->where('p.publishedAt <= :now')
-            ->orderBy('p.publishedAt', 'DESC')
             ->setParameter('now', new \DateTimeImmutable());
 
         if ($tagName) {
@@ -47,14 +55,96 @@ class PageRenderer
             }
         }
 
-        return array_map(static fn ($post) => [
+        $n = (int) $qb->getQuery()->getSingleScalarResult();
+
+        return [$n, max(1, (int) ceil($n / Paginator::PAGE_SIZE))];
+    }
+
+    /**
+     * Fetch N contiguous or non-contiguous pages in one round-trip and
+     * return a map of page → posts. Uses the Doctrine ORM pagination
+     * idiom: first window the distinct post ids with LIMIT/OFFSET, then
+     * hydrate those ids with joins. Prevents to-many joins from clipping
+     * the window, which setFirstResult()/setMaxResults() alone would do.
+     *
+     * @param list<int> $pageNums
+     *
+     * @return array<int, list<array{title: string, slug: string, summary: string, publishedAt: \DateTimeImmutable, authorFullName: string, tags: list<string>}>>
+     */
+    public function fetchChunk(array $pageNums, ?string $tagName): array
+    {
+        if ($pageNums === []) {
+            return [];
+        }
+        sort($pageNums);
+        $first = $pageNums[0];
+        $last = $pageNums[\count($pageNums) - 1];
+        $pageSize = Paginator::PAGE_SIZE;
+        $offset = ($first - 1) * $pageSize;
+        $limit = ($last - $first + 1) * $pageSize;
+
+        $repo = $this->em->getRepository(Post::class);
+
+        $idQb = $repo->createQueryBuilder('p')
+            ->select('p.id')
+            ->where('p.publishedAt <= :now')
+            ->orderBy('p.publishedAt', 'DESC')
+            ->addOrderBy('p.id', 'DESC')
+            ->setParameter('now', new \DateTimeImmutable())
+            ->setFirstResult($offset)
+            ->setMaxResults($limit);
+
+        if ($tagName) {
+            $tagEntity = $this->em->getRepository(Tag::class)->findOneBy(['name' => $tagName]);
+            if ($tagEntity) {
+                $idQb->andWhere(':tag MEMBER OF p.tags')->setParameter('tag', $tagEntity);
+            }
+        }
+
+        $ids = array_column($idQb->getQuery()->getArrayResult(), 'id');
+        if ($ids === []) {
+            $out = [];
+            foreach ($pageNums as $p) {
+                $out[$p] = [];
+            }
+            return $out;
+        }
+
+        $posts = $repo->createQueryBuilder('p')
+            ->addSelect('a', 't')
+            ->innerJoin('p.author', 'a')
+            ->leftJoin('p.tags', 't')
+            ->where('p.id IN (:ids)')
+            ->orderBy('p.publishedAt', 'DESC')
+            ->addOrderBy('p.id', 'DESC')
+            ->setParameter('ids', $ids)
+            ->getQuery()
+            ->getResult();
+
+        $rows = array_map($this->toArray(...), $posts);
+
+        $out = [];
+        foreach ($pageNums as $p) {
+            $start = ($p - $first) * $pageSize;
+            $out[$p] = \array_slice($rows, $start, $pageSize);
+        }
+
+        return $out;
+    }
+
+    /**
+     * @return array{title: string, slug: string, summary: string, publishedAt: \DateTimeImmutable, authorFullName: string, tags: list<string>}
+     */
+    private function toArray(Post $post): array
+    {
+        return [
             'title' => $post->getTitle(),
             'slug' => $post->getSlug(),
             'summary' => $post->getSummary(),
             'publishedAt' => $post->getPublishedAt(),
             'authorFullName' => $post->getAuthor()->getFullName(),
-            'tags' => array_map(static fn ($t) => $t->getName(), $post->getTags()->toArray()),
-        ], iterator_to_array((new Paginator($qb))->paginate($pageNum)->getResults()));
+            'tags' => array_map(static fn (Tag $t) => $t->getName(), $post->getTags()->toArray()),
+        ];
     }
 
     /**

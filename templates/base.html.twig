@@ -51,6 +51,11 @@
                                             </a>
                                         </li>
                                     {% endif %}
+                                    <li class="nav-item">
+                                        <a class="nav-link {{ _route == 'cpu_scale' ? 'active' }}" href="{{ path('cpu_scale') }}">
+                                            <twig:ux:icon name="tabler:cpu"/> CPU scale
+                                        </a>
+                                    </li>
                                 {% endblock %}
 
                                 <li class="nav-item">

@@ -6,9 +6,9 @@
     <div class="mb-3">
         <a href="{{ path('blog_index') }}" class="btn btn-sm btn-outline-primary">Back to blog</a>
         <a href="{{ path('blog_all') }}" class="btn btn-sm btn-outline-primary">Fork (single)</a>
-        <a href="{{ path('blog_all_fork', {num: 9}) }}" class="btn btn-sm btn-outline-primary">Fork/9</a>
+        <a href="{{ path('blog_all_fork', {num: 4}) }}" class="btn btn-sm btn-outline-primary">Fork/4</a>
         <a href="{{ path('blog_ext_parallel') }}" class="btn btn-sm btn-outline-secondary">ext-parallel (single)</a>
-        <a href="{{ path('blog_ext_parallel_num', {num: 9}) }}" class="btn btn-sm btn-outline-secondary">ext-parallel/9</a>
+        <a href="{{ path('blog_ext_parallel_num', {num: 4}) }}" class="btn btn-sm btn-outline-secondary">ext-parallel/4</a>
     </div>
 
     <div class="d-flex justify-content-between align-items-center mb-3">
@@ -17,7 +17,7 @@
             </ul>
         </nav>
         <small class="text-muted text-nowrap ms-3">
-            {{ numResults }} posts &middot; {{ totalPages }} pages &middot; {{ elapsed_ms }} ms ({{ mode }})
+            {{ numResults }} posts &middot; {{ totalPages }} pages &middot; {{ elapsed_ms }} ms ({{ mode }}){% if phaseT is defined %} &middot; {% for k, v in phaseT %}{{ k }}={{ v }}ms {% endfor %}{% endif %}
         </small>
     </div>
 
@@ -35,6 +35,8 @@
                             <th class="text-end">child&nbsp;start@</th>
                             <th class="text-end">child&nbsp;end@</th>
                             <th class="text-end">compute&nbsp;ms</th>
+                            <th class="text-end">fetch</th>
+                            <th class="text-end">render</th>
                             <th class="text-end">reap&nbsp;wait&nbsp;ms</th>
                         </tr>
                     </thead>
@@ -50,6 +52,8 @@
                                 <td class="text-end">{{ t.start_ms|default('—') }}</td>
                                 <td class="text-end">{{ t.end_ms|default('—') }}</td>
                                 <td class="text-end">{{ compute|round(2) }}</td>
+                                <td class="text-end">{{ t.fetch_ms|default('—') }}</td>
+                                <td class="text-end">{{ t.render_ms|default('—') }}</td>
                                 <td class="text-end">{{ reap|round(2) }}</td>
                             </tr>
                         {% endfor %}

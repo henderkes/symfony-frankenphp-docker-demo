@@ -1,0 +1,109 @@
+{% extends 'base.html.twig' %}
+
+{% block body_id 'cpu_scale' %}
+
+{% block main %}
+    <h3 class="mb-3">CPU scaling benchmark</h3>
+
+    <div class="mb-3">
+        {% for w in [0, 1, 2, 3, 4, 6, 8, 9, 10, 12, 16] %}
+            <a href="{{ path('cpu_scale', {num: w, iters: iters_input}) }}"
+               class="btn btn-sm {{ w == num_workers ? 'btn-primary' : 'btn-outline-primary' }}">W={{ w }}</a>
+        {% endfor %}
+        <span class="ms-3 text-muted small">iters:</span>
+        {% for lbl in ['100M', '500M', '1B', '2B'] %}
+            <a href="{{ path('cpu_scale', {num: num_workers, iters: lbl}) }}"
+               class="btn btn-sm {{ lbl == iters_input ? 'btn-secondary' : 'btn-outline-secondary' }}">{{ lbl }}</a>
+        {% endfor %}
+    </div>
+
+    <div class="row mb-3 text-center">
+        <div class="col-md-2"><div class="border rounded p-2">
+            <div class="small text-muted">workers</div>
+            <div class="fs-4">{{ num_workers }} <small class="text-muted">+1 main</small></div>
+        </div></div>
+        <div class="col-md-2"><div class="border rounded p-2">
+            <div class="small text-muted">iters total</div>
+            <div class="fs-4">{{ iters_input }}</div>
+            <div class="small text-muted">{{ iters_per_stream }}/stream</div>
+        </div></div>
+        <div class="col-md-2"><div class="border rounded p-2">
+            <div class="small text-muted">elapsed</div>
+            <div class="fs-4">{{ elapsed_ms }} <small>ms</small></div>
+        </div></div>
+        <div class="col-md-2"><div class="border rounded p-2">
+            <div class="small text-muted">total CPU used</div>
+            <div class="fs-4">{{ total_work_ms }} <small>ms</small></div>
+        </div></div>
+        <div class="col-md-2"><div class="border rounded p-2">
+            <div class="small text-muted">speedup</div>
+            <div class="fs-4">{{ speedup }}×</div>
+            <div class="small text-muted">vs serial</div>
+        </div></div>
+        <div class="col-md-2"><div class="border rounded p-2">
+            <div class="small text-muted">efficiency</div>
+            <div class="fs-4">{{ efficiency_pct }}<small>%</small></div>
+            <div class="small text-muted">of {{ streams }}× ideal</div>
+        </div></div>
+    </div>
+
+    <table class="table table-sm table-bordered small mb-3" style="font-family:monospace">
+        <thead>
+            <tr>
+                <th>stream</th>
+                <th class="text-end">spawn&nbsp;ms</th>
+                <th class="text-end">spawned@</th>
+                <th class="text-end">work&nbsp;start@</th>
+                <th class="text-end">work&nbsp;end@</th>
+                <th class="text-end">work&nbsp;ms</th>
+                <th class="text-end">reap&nbsp;wait&nbsp;ms</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for i, t in timings %}
+                {% set work = (t.end_ms|default(0)) - (t.start_ms|default(0)) %}
+                {% set reap = (t.reap_end_ms|default(0)) - (t.reap_start_ms|default(0)) %}
+                <tr>
+                    <td>{{ i == 0 ? '0 (main)' : i }}</td>
+                    <td class="text-end">{{ t.spawn_ms }}</td>
+                    <td class="text-end">{{ t.spawned_at_ms }}</td>
+                    <td class="text-end">{{ t.start_ms|default('—') }}</td>
+                    <td class="text-end">{{ t.end_ms|default('—') }}</td>
+                    <td class="text-end">{{ work|round(2) }}</td>
+                    <td class="text-end">{{ reap|round(2) }}</td>
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <div style="position:relative; height:{{ (timings|length * 22) + 4 }}px; background:#f5f5f5; border:1px solid #ddd; font-family:monospace; font-size:11px">
+        {% for i, t in timings %}
+            {% set spawn_pct  = t.spawned_at_ms                / elapsed_ms * 100 %}
+            {% set start_pct  = (t.start_ms|default(0))        / elapsed_ms * 100 %}
+            {% set end_pct    = (t.end_ms|default(0))          / elapsed_ms * 100 %}
+            {% set reap_s_pct = (t.reap_start_ms|default(0))   / elapsed_ms * 100 %}
+            {% set reap_e_pct = (t.reap_end_ms|default(0))     / elapsed_ms * 100 %}
+            <div style="position:absolute; top:{{ i * 22 + 2 }}px; left:0; width:100%; height:20px">
+                <div title="fork+handshake" style="position:absolute; top:0; left:{{ spawn_pct }}%; width:{{ (start_pct - spawn_pct)|abs }}%; height:100%; background:#d4b000"></div>
+                <div title="CPU work {{ (end_pct - start_pct)|round(2) }}%" style="position:absolute; top:0; left:{{ start_pct }}%; width:{{ end_pct - start_pct }}%; height:100%; background:#3a84d6"></div>
+                <div title="reap wait" style="position:absolute; top:0; left:{{ reap_s_pct }}%; width:{{ reap_e_pct - reap_s_pct }}%; height:100%; background:#b33a3a; opacity:0.6"></div>
+                <div style="position:absolute; top:3px; left:6px; color:#000; font-weight:bold">{{ i == 0 ? 'main' : 'w' ~ i }}</div>
+            </div>
+        {% endfor %}
+    </div>
+    <div class="small text-muted mt-1 mb-3">
+        <span style="background:#d4b000">&nbsp;&nbsp;&nbsp;</span> fork+handshake
+        &nbsp;<span style="background:#3a84d6">&nbsp;&nbsp;&nbsp;</span> CPU work
+        &nbsp;<span style="background:#b33a3a;opacity:0.6">&nbsp;&nbsp;&nbsp;</span> parent reap wait
+    </div>
+
+    <details class="small text-muted">
+        <summary style="cursor:pointer">what this measures</summary>
+        <div class="mt-2">
+            Each stream runs a tight integer LCG loop — working set is one CPU register, no memory access,
+            no shared data. Speedup = sum(stream CPU time) / wall-clock elapsed. Efficiency = speedup / (workers+1).
+            100% efficiency means perfect linear scaling; less than 100% is the cost of serial fork setup,
+            reap tail, SMT/core contention.
+        </div>
+    </details>
+{% endblock %}
