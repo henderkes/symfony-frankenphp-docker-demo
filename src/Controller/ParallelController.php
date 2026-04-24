@@ -849,18 +849,18 @@ class ParallelController extends AbstractController
 
         $forkStart = hrtime(true);
         $future = $runtime->run(static function () use ($pidFile) {
-            \file_put_contents($pidFile, (string) \getmypid());
+            file_put_contents($pidFile, (string) getmypid());
             // keep the child alive long enough for the parent to inspect /proc
-            \usleep(400_000);
+            usleep(400_000);
 
-            return ['pid' => \getmypid()];
+            return ['pid' => getmypid()];
         });
         $forkMs = round((hrtime(true) - $forkStart) / 1e6, 3);
 
         // Spin briefly waiting for the child to write its pid
         $childPid = 0;
         for ($i = 0; $i < 200; ++$i) {
-            if (\file_exists($pidFile) && ($raw = \file_get_contents($pidFile)) !== '' && ctype_digit(trim($raw))) {
+            if (file_exists($pidFile) && ($raw = file_get_contents($pidFile)) !== '' && ctype_digit(trim($raw))) {
                 $childPid = (int) trim($raw);
                 break;
             }
@@ -870,7 +870,7 @@ class ParallelController extends AbstractController
         $childStats = ['error' => 'could not read child proc'];
         if ($childPid > 0 && file_exists("/proc/$childPid/status")) {
             $status = file_get_contents("/proc/$childPid/status");
-            $maps = @file("/proc/$childPid/maps", FILE_IGNORE_NEW_LINES);
+            $maps = @file("/proc/$childPid/maps", \FILE_IGNORE_NEW_LINES);
             $parse = static function (string $key) use ($status): int {
                 return preg_match("/^$key:\\s+(\\d+)\\s+kB/m", $status, $m) ? (int) $m[1] : 0;
             };
@@ -885,9 +885,9 @@ class ParallelController extends AbstractController
                     $perms = $m[3];
                     $path = trim($m[4]);
                     $kind = match (true) {
-                        $path === '' => "anon $perms",
+                        '' === $path => "anon $perms",
                         str_starts_with($path, '[') => "special $path",
-                        default => 'file ' . (str_contains($path, '.so') ? 'shared_lib' : basename($path)),
+                        default => 'file '.(str_contains($path, '.so') ? 'shared_lib' : basename($path)),
                     };
                     $buckets[$kind] = ($buckets[$kind] ?? ['count' => 0, 'size' => 0]);
                     ++$buckets[$kind]['count'];
@@ -897,7 +897,7 @@ class ParallelController extends AbstractController
                 arsort($buckets);
             }
             $top = [];
-            foreach (array_slice($buckets, 0, 10, true) as $k => $v) {
+            foreach (\array_slice($buckets, 0, 10, true) as $k => $v) {
                 $top[$k] = ['count' => $v['count'], 'mb' => round($v['size'] / 1048576, 1)];
             }
             $childStats = [
@@ -914,7 +914,7 @@ class ParallelController extends AbstractController
 
         // Parent stats for comparison
         $parentStatus = file_get_contents('/proc/'.getmypid().'/status');
-        $parentMaps = @file('/proc/'.getmypid().'/maps', FILE_IGNORE_NEW_LINES);
+        $parentMaps = @file('/proc/'.getmypid().'/maps', \FILE_IGNORE_NEW_LINES);
         $parse = static function (string $key) use ($parentStatus): int {
             return preg_match("/^$key:\\s+(\\d+)\\s+kB/m", $parentStatus, $m) ? (int) $m[1] : 0;
         };
@@ -934,7 +934,7 @@ class ParallelController extends AbstractController
             'parent' => $parent,
             'targets' => ['vm_size_mb' => 500, 'fork_ms' => 25],
             'passing' => [
-                'vsz' => ($childStats['vm_size_mb'] ?? INF) <= 500,
+                'vsz' => ($childStats['vm_size_mb'] ?? \INF) <= 500,
                 'fork_ms' => $forkMs <= 25,
             ],
         ]);

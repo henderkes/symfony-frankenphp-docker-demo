@@ -30,10 +30,10 @@ use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Attribute\Cache;
 use Symfony\Component\Routing\Attribute\Route;
-use Symfony\Component\Stopwatch\Stopwatch;
 use Symfony\Component\Routing\Requirement\Requirement;
 use Symfony\Component\Security\Http\Attribute\CurrentUser;
 use Symfony\Component\Security\Http\Attribute\IsGranted;
+use Symfony\Component\Stopwatch\Stopwatch;
 
 /**
  * Controller used to manage blog contents in the public part of the site.
@@ -146,8 +146,8 @@ final class BlogController extends AbstractController
         $mainRes = $renderChunk($chunks[0], $t0);
         $timings[0]['start_ms'] = $mainRes['start_ms'];
         $timings[0]['end_ms'] = $mainRes['end_ms'];
-        $timings[0]['fetch_ms'] = $mainRes['fetch_ms'] ?? 0;
-        $timings[0]['render_ms'] = $mainRes['render_ms'] ?? 0;
+        $timings[0]['fetch_ms'] = $mainRes['fetch_ms'];
+        $timings[0]['render_ms'] = $mainRes['render_ms'];
         $timings[0]['reap_start_ms'] = $mainRes['end_ms'];
         $timings[0]['reap_end_ms'] = $mainRes['end_ms'];
         $pages = $mainRes['pages'];

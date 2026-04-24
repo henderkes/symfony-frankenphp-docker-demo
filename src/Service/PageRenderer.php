@@ -73,7 +73,7 @@ class PageRenderer
      */
     public function fetchChunk(array $pageNums, ?string $tagName): array
     {
-        if ($pageNums === []) {
+        if ([] === $pageNums) {
             return [];
         }
         sort($pageNums);
@@ -102,11 +102,12 @@ class PageRenderer
         }
 
         $ids = array_column($idQb->getQuery()->getArrayResult(), 'id');
-        if ($ids === []) {
+        if ([] === $ids) {
             $out = [];
             foreach ($pageNums as $p) {
                 $out[$p] = [];
             }
+
             return $out;
         }
 

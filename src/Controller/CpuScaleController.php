@@ -1,5 +1,14 @@
 <?php
 
+/*
+ * This file is part of the Symfony package.
+ *
+ * (c) Fabien Potencier <fabien@symfony.com>
+ *
+ * For the full copyright and license information, please view the LICENSE
+ * file that was distributed with this source code.
+ */
+
 namespace App\Controller;
 
 use Henderkes\Fork\Future;
@@ -38,7 +47,7 @@ final class CpuScaleController extends AbstractController
             $start = hrtime(true);
             $x = 0;
             for ($i = 0; $i < $n; ++$i) {
-                $x = ($x * 1103515245 + 12345) & 0x7fffffff;
+                $x = ($x * 1103515245 + 12345) & 0x7FFFFFFF;
             }
             $end = hrtime(true);
 
@@ -75,7 +84,7 @@ final class CpuScaleController extends AbstractController
         $timings[0]['reap_end_ms'] = $mainRes['end_ms'];
 
         $tReap = hrtime(true);
-        $results = $futures === [] ? [] : Future::await(...array_values($futures));
+        $results = [] === $futures ? [] : Future::await(...array_values($futures));
         $indices = array_keys($futures);
         foreach ($indices as $k => $i) {
             $res = $results[$k];
@@ -95,7 +104,7 @@ final class CpuScaleController extends AbstractController
             $totalWork += $t['end_ms'] - $t['start_ms'];
         }
         $speedup = $elapsed > 0 ? round($totalWork / $elapsed, 2) : 0;
-        $efficiency = $streams > 0 ? round(($speedup / $streams) * 100, 1) : 0;
+        $efficiency = round(($speedup / $streams) * 100, 1);
 
         return $this->render('cpu/scale.html.twig', [
             'num_workers' => $num,
