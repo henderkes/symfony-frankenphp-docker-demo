@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-# Build FrankenPHP from the fix/pcntl_fork branch
+# Build FrankenPHP from the master branch
 FROM php:8.5-zts-trixie AS php-base
 FROM golang:1.26-trixie AS golang-base
 
@@ -75,9 +75,8 @@ RUN curl -s https://api.github.com/repos/e-dant/watcher/releases/latest | \
     cmake --install build && \
     ldconfig
 
-# Clone FrankenPHP from the fix/pcntl_fork branch
 WORKDIR /go/src/app
-RUN git clone --depth 1 --branch fix/pcntl_fork https://github.com/php/frankenphp.git .
+RUN git clone --depth 1 --branch main https://github.com/php/frankenphp.git .
 
 RUN go mod download
 
